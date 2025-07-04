@@ -1,0 +1,30 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Set up Docker Buildx for building multi-platform images
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build and push Docker image
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ghcr.io/goim01/grokbot:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
