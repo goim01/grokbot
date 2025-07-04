@@ -241,12 +241,12 @@ async def handle_message(message):
                 api_name = "xAI" if selected_api == "xai" else "OpenAI"
                 answer += f"\n(answered by {api_name})"
             
-            max_length = 2000 - len(f"{message.author.mention} {mention_text}")
+            max_length = 2000 - len(f"{message.author.mention}")
             chunks = split_message(answer, max_length)
             
             for i, chunk in enumerate(chunks):
                 if i == 0:
-                    final_message = f"{message.author.mention} {mention_text}{chunk}"
+                    final_message = f"{message.author.mention} {chunk}"
                 else:
                     final_message = chunk
                 if final_message.strip():
