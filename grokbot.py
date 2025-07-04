@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord.ui import View, Button
 import aiohttp
 import asyncio
 import logging
@@ -8,12 +9,19 @@ import re
 import os
 import sys
 
-# Load environment variables
+# Load general environment variables
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", 3000))
+
+# xAI env variables
 XAI_API_KEY = os.getenv("XAI_API_KEY")
-MODEL_NAME = os.getenv("MODEL_NAME", "grok-3")
-MAX_TOKENS = int(os.getenv("MAX_TOKENS", 1500))
+XAI_MODEL = os.getenv("XAI_MODEL", "grok-3-mini")
 XAI_CHAT_URL = "https://api.x.ai/v1/chat/completions"
+
+# OpenAI env variables
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+OPENAI_CHAT_URL = "https://api.openai.com/v1/responses"
 
 # Set up logging to both file and console
 root_logger = logging.getLogger()
@@ -39,6 +47,40 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # Message queue for handling concurrent questions
 message_queue = asyncio.Queue()
+
+# Store user API selections
+user_api_selection = {}
+
+class APISelectView(View):
+    def __init__(self, user_id):
+        super().__init__(timeout=None)
+        self.user_id = user_id
+
+    @discord.ui.button(label="xAI", style=discord.ButtonStyle.primary)
+    async def xai_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("You cannot select an API for another user.", ephemeral=True)
+            return
+        if not XAI_API_KEY:
+            await interaction.response.send_message("xAI API is not configured.", ephemeral=True)
+            return
+        user_api_selection[self.user_id] = "xai"
+        await interaction.response.send_message("Selected xAI for your questions.", ephemeral=True)
+
+    @discord.ui.button(label="OpenAI", style=discord.ButtonStyle.primary)
+    async def openai_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("You cannot select an API for another user.", ephemeral=True)
+            return
+        if not OPENAI_API_KEY:
+            await interaction.response.send_message("OpenAI API is not configured.", ephemeral=True)
+            return
+        user_api_selection[self.user_id] = "openai"
+        await interaction.response.send_message("Selected OpenAI for your questions.", ephemeral=True)
+
+async def send_api_selection_menu(message):
+    view = APISelectView(message.author.id)
+    await message.channel.send(f"{message.author.mention} Please select the AI to answer your questions:", view=view)
 
 @bot.event
 async def on_ready():
@@ -96,7 +138,7 @@ async def handle_message(message):
             question = re.sub(f"<@!?{user.id}>", display_name, question).strip()
     
     if not question:
-        await message.channel.send("Please provide a question after mentioning me!")
+        await send_api_selection_menu(message)
         return
 
     # Check if the message is a reply and fetch original message if available
@@ -107,7 +149,7 @@ async def handle_message(message):
             if original_message and original_message.content:
                 original_content = original_message.content
         except (discord.NotFound, discord.Forbidden):
-            pass  # Ignore if message not found or forbidden
+            pass
 
     # Create context for the API
     if original_content:
@@ -116,29 +158,53 @@ async def handle_message(message):
     else:
         context = question
 
-    mentions = [f"<@!{user.id}>" for user in message.mentions if user != bot.user]
-    mention_text = " ".join(mentions) + " " if mentions else ""
-    logging.info(f"Context sent to API: {context}")
+    # Determine selected API
+    selected_api = user_api_selection.get(message.author.id, "xai")
+    logging.info(f"Selected API: {selected_api}")
 
-    # Send the final API request using async, so the bot's connection to discord doesn't stall
+    # Set API details
+    if selected_api == "xai":
+        if not XAI_API_KEY:
+            await message.channel.send(f"{message.author.mention} Sorry, the xAI API is not configured.")
+            return
+        api_url = XAI_CHAT_URL
+        api_key = XAI_API_KEY
+        model = XAI_MODEL
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "User-Agent": "DiscordBot/1.0"
+        }
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": context}],
+            "stream": False,
+            "max_tokens": MAX_TOKENS
+        }
+    else:  
+        if not OPENAI_API_KEY:
+            await message.channel.send(f"{message.author.mention} Sorry, the OpenAI API is not configured.")
+            return
+        api_url = OPENAI_CHAT_URL
+        api_key = OPENAI_API_KEY
+        model = OPENAI_MODEL
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": context}],
+            "max_tokens": MAX_TOKENS
+        }
+
     async with message.channel.typing():
         try:
-            headers = {
-                "Authorization": f"Bearer {XAI_API_KEY}",
-                "Content-Type": "application/json",
-                "User-Agent": "DiscordBot/1.0"
-            }
-            payload = {
-                "model": MODEL_NAME,
-                "messages": [{"role": "user", "content": context}],
-                "stream": False,
-                "max_tokens": MAX_TOKENS
-            }
             retries = 3
             async with aiohttp.ClientSession() as session:
                 for attempt in range(retries):
                     try:
-                        async with session.post(XAI_CHAT_URL, headers=headers, json=payload, timeout=15) as response:
+                        async with session.post(api_url, headers=headers, json=payload, timeout=15) as response:
                             response.raise_for_status()
                             response_data = await response.json()
                             break
@@ -146,30 +212,35 @@ async def handle_message(message):
                         if e.status == 429 and attempt < retries - 1:
                             await asyncio.sleep(2 ** attempt)
                             continue
-                        logging.error(f"Chat API error: HTTP {e.status}: {e.message}")
-                        await message.channel.send(f"{message.author.mention} Sorry, there was an error contacting the API: HTTP {e.status}")
+                        error_details = await response.text()
+                        logging.error(f"API error ({selected_api}): HTTP {e.status}: {error_details}")
+                        await message.channel.send(f"{message.author.mention} Sorry, there was an error contacting the {selected_api.upper()} API: HTTP {e.status}")
                         return
                     except aiohttp.ClientConnectionError as e:
                         if attempt < retries - 1:
                             await asyncio.sleep(2 ** attempt)
                             continue
-                        logging.error(f"Chat API connection error: {str(e)}")
-                        await message.channel.send(f"{message.author.mention} Sorry, there was a connection error")
+                        logging.error(f"API connection error ({selected_api}): {str(e)}")
+                        await message.channel.send(f"{message.author.mention} Sorry, there was a connection error with the {selected_api.upper()} API")
                         return
                     except asyncio.TimeoutError:
                         if attempt < retries - 1:
                             await asyncio.sleep(2 ** attempt)
                             continue
-                        logging.error("Chat API timeout")
-                        await message.channel.send(f"{message.author.mention} Sorry, the API request timed out")
+                        logging.error(f"API timeout ({selected_api})")
+                        await message.channel.send(f"{message.author.mention} Sorry, the {selected_api.upper()} API request timed out")
                         return
             
             if not isinstance(response_data, dict) or "choices" not in response_data or not response_data["choices"]:
-                logging.error(f"Invalid API response format: {response_data}")
-                await message.channel.send(f"{message.author.mention} Sorry, the API returned an invalid response")
+                logging.error(f"Invalid API response format ({selected_api}): {response_data}")
+                await message.channel.send(f"{message.author.mention} Sorry, the {selected_api.upper()} API returned an invalid response")
                 return
             
             answer = response_data["choices"][0]["message"]["content"]
+            if selected_api:
+                api_name = "xAI" if selected_api == "xai" else "OpenAI"
+                answer += f"\n(answered by {api_name})"
+            
             max_length = 2000 - len(f"{message.author.mention} {mention_text}")
             chunks = split_message(answer, max_length)
             
@@ -180,15 +251,22 @@ async def handle_message(message):
                     final_message = chunk
                 if final_message.strip():
                     logging.info(f"Sending chunk {i + 1}/{len(chunks)}, length: {len(final_message)}")
-                    await message.channel.send(final_message)
+                    try:
+                        await message.channel.send(final_message)
+                    except discord.errors.HTTPException as e:
+                        if e.status == 429:
+                            await asyncio.sleep(2 ** attempt)
+                            await message.channel.send(final_message)
+                        else:
+                            raise
                     await asyncio.sleep(0.5)
         
         except (KeyError, IndexError) as e:
-            logging.error(f"Error parsing API response: {str(e)}\n{traceback.format_exc()}")
-            await message.channel.send(f"{message.author.mention} Sorry, there was an error processing the API response")
+            logging.error(f"Error parsing API response ({selected_api}): {str(e)}\n{traceback.format_exc()}")
+            await message.channel.send(f"{message.author.mention} Sorry, there was an error processing the {selected_api.upper()} API response")
         except Exception as e:
-            logging.error(f"Unexpected error: {str(e)}\n{traceback.format_exc()}")
-            await message.channel.send(f"{message.author.mention} Sorry, an unexpected error occurred: {str(e)}")
+            logging.error(f"Unexpected error ({selected_api}): {str(e)}\n{traceback.format_exc()}")
+            await message.channel.send(f"{message.author.mention} Sorry, an unexpected error occurred with the {selected_api.upper()} API: {str(e)}")
 
 @bot.event
 async def on_message(message):
