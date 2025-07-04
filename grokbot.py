@@ -120,6 +120,7 @@ async def handle_message(message):
     mention_text = " ".join(mentions) + " " if mentions else ""
     logging.info(f"Context sent to API: {context}")
 
+    # Send the final API request using async, so the bot's connection to discord doesn't stall
     async with message.channel.typing():
         try:
             headers = {
