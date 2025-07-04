@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from discord.ui import View, Button
+from discord import app_commands
 import aiohttp
 import asyncio
 import logging
@@ -51,41 +51,38 @@ message_queue = asyncio.Queue()
 # Store user API selections
 user_api_selection = {}
 
-class APISelectView(View):
-    def __init__(self, user_id):
-        super().__init__(timeout=None)
-        self.user_id = user_id
-
-    @discord.ui.button(label="xAI", style=discord.ButtonStyle.primary)
-    async def xai_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message("You cannot select an API for another user.", ephemeral=True)
-            return
-        if not XAI_API_KEY:
-            await interaction.response.send_message("xAI API is not configured.", ephemeral=True)
-            return
-        user_api_selection[self.user_id] = "xai"
-        await interaction.response.send_message("Selected xAI for your questions.", ephemeral=True)
-
-    @discord.ui.button(label="OpenAI", style=discord.ButtonStyle.primary)
-    async def openai_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message("You cannot select an API for another user.", ephemeral=True)
-            return
-        if not OPENAI_API_KEY:
-            await interaction.response.send_message("OpenAI API is not configured.", ephemeral=True)
-            return
-        user_api_selection[self.user_id] = "openai"
-        await interaction.response.send_message("Selected OpenAI for your questions.", ephemeral=True)
-
-async def send_api_selection_menu(message):
-    view = APISelectView(message.author.id)
-    await message.channel.send(f"{message.author.mention} Please select the AI to answer your questions:", view=view)
-
 @bot.event
 async def on_ready():
     logging.info(f"Logged in as {bot.user.name}")
+    # Sync slash commands on startup
+    try:
+        synced = await bot.tree.sync()
+        logging.info(f"Synced {len(synced)} commands")
+    except Exception as e:
+        logging.error(f"Failed to sync commands: {e}")
     bot.loop.create_task(process_message_queue())
+
+# Slash command to select API (xAI or OpenAI)
+@bot.tree.command(name="selectapi", description="Select the AI API (xAI or OpenAI)")
+@app_commands.describe(api="API to use (xAI or OpenAI)")
+@app_commands.choices(api=[
+    app_commands.Choice(name="xAI", value="xai"),
+    app_commands.Choice(name="OpenAI", value="openai")
+])
+async def selectapi(interaction: discord.Interaction, api: app_commands.Choice[str]):
+    # Check API key configuration
+    if api.value == "xai":
+        if not XAI_API_KEY:
+            await interaction.response.send_message("xAI API is not configured.", ephemeral=True)
+            return
+    elif api.value == "openai":
+        if not OPENAI_API_KEY:
+            await interaction.response.send_message("OpenAI API is not configured.", ephemeral=True)
+            return
+
+    # Update user preference and confirm
+    user_api_selection[interaction.user.id] = api.value
+    await interaction.response.send_message(f"Selected {api.name} for your questions.", ephemeral=True)
 
 # Split text into chunks at newlines or sentence boundaries within max_length
 def split_message(text, max_length):
@@ -136,12 +133,13 @@ async def handle_message(message):
         if user != bot.user:
             display_name = user.display_name if message.guild and message.guild.get_member(user.id) else user.name
             question = re.sub(f"<@!?{user.id}>", display_name, question).strip()
-    
+
+    # If no question text remains, prompt the user
     if not question:
-        await send_api_selection_menu(message)
+        await message.channel.send(f"{message.author.mention} Please ask a question or use slash commands.")
         return
 
-    # Check if the message is a reply and fetch original message if available
+    # Check for replied-to original message
     original_content = None
     if message.reference:
         try:
@@ -151,18 +149,18 @@ async def handle_message(message):
         except (discord.NotFound, discord.Forbidden):
             pass
 
-    # Create context for the API
+    # Build prompt context
     if original_content:
         context = f"Original message: {original_content}\nUser question: {question}"
         logging.info(f"Included original message: {original_content}")
     else:
         context = question
 
-    # Determine selected API
+    # Determine which API to use (default to xAI)
     selected_api = user_api_selection.get(message.author.id, "xai")
     logging.info(f"Selected API: {selected_api}")
 
-    # Set API details
+    # Prepare API request payload
     if selected_api == "xai":
         if not XAI_API_KEY:
             await message.channel.send(f"{message.author.mention} Sorry, the xAI API is not configured.")
@@ -198,6 +196,7 @@ async def handle_message(message):
             "max_tokens": MAX_TOKENS
         }
 
+    # Send request to AI API and stream response
     async with message.channel.typing():
         try:
             retries = 3
