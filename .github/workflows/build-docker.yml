@@ -1,9 +1,10 @@
-name: Build and Push Docker Image TEST
+name: Build and Push Docker Image to Registry
 
 on:
   push:
     branches:
       - main
+      - openai-withgui
 
 jobs:
   build-and-push:
