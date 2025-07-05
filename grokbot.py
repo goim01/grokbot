@@ -152,7 +152,8 @@ async def process_message_queue():
             logging.error(f"Queue processing error: {str(e)}\n{traceback.format_exc()}")
         finally:
             message_queue.task_done()
-        await asyncio.sleep(1)
+        if message_queue.empty():
+            await asyncio.sleep(1)
 
 # Process a single message
 async def handle_message(message):
