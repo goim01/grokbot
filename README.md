@@ -1,3 +1,3 @@
 # grokbot
 
-My personal Discord bot that uses xAI's API to let discord users ask it questions.
+My personal Discord bot that lets the user decide which API to use xAI or OpenAI so discord users ask can it questions by tagging/resplying to the bot.
