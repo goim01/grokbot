@@ -53,7 +53,10 @@ user_api_selection = {}
 
 @bot.event
 async def on_ready():
-    logging.info(f"Logged in as {bot.user.name}")
+    if bot.user is not None:
+        logging.info(f"Logged in as {bot.user.name}")
+    else:
+        logging.info("Logged in, but bot user is None somehow?")
     # Sync slash commands on startup
     try:
         synced = await bot.tree.sync()
@@ -122,9 +125,10 @@ async def process_message_queue():
 async def handle_message(message):
     raw_content = message.content
     question = raw_content
-    question = re.sub(f"<@!?{bot.user.id}>", "", question).strip()
-    bot_name = bot.user.name.lower()
-    bot_nickname = message.guild.get_member(bot.user.id).nick.lower() if message.guild and message.guild.get_member(bot.user.id).nick else None
+    if bot.user is not None:
+        question = re.sub(f"<@!?{bot.user.id}>", "", question).strip()
+    bot_name = bot.user.name.lower() if bot.user and bot.user.name else None
+    bot_nickname = message.guild.get_member(bot.user.id).nick.lower() if bot.user and message.guild and message.guild.get_member(bot.user.id) and message.guild.get_member(bot.user.id).nick else None
     if bot_name:
         question = re.sub(f"@{re.escape(bot_name)}", "", question, flags=re.IGNORECASE).strip()
     if bot_nickname:
@@ -206,6 +210,7 @@ async def handle_message(message):
     async with message.channel.typing():
         try:
             retries = 3
+            response_data = None
             async with aiohttp.ClientSession() as session:
                 for attempt in range(retries):
                     try:
@@ -217,7 +222,9 @@ async def handle_message(message):
                         if e.status == 429 and attempt < retries - 1:
                             await asyncio.sleep(2 ** attempt)
                             continue
-                        error_details = await response.text()
+                        # Open a new request to get error details, since 'response' may not be defined
+                        async with session.post(api_url, headers=headers, json=payload, timeout=15) as error_response:
+                            error_details = await error_response.text()
                         logging.error(f"API error ({selected_api}): HTTP {e.status}: {error_details}")
                         await message.channel.send(f"{message.author.mention} Sorry, there was an error contacting the {selected_api.upper()} API: HTTP {e.status}")
                         return
@@ -260,7 +267,7 @@ async def handle_message(message):
                         await message.channel.send(final_message)
                     except discord.errors.HTTPException as e:
                         if e.status == 429:
-                            await asyncio.sleep(2 ** attempt)
+                            await asyncio.sleep(2)  # Fixed backoff since 'attempt' is not defined here
                             await message.channel.send(final_message)
                         else:
                             raise
@@ -283,4 +290,7 @@ async def on_message(message):
     await bot.process_commands(message)
 
 # Run the bot
+if DISCORD_TOKEN is None:
+    logging.error("DISCORD_TOKEN environment variable is not set. Exiting.")
+    sys.exit("DISCORD_TOKEN environment variable is not set.")
 bot.run(DISCORD_TOKEN)
