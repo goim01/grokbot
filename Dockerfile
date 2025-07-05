@@ -11,9 +11,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the bot code
 COPY grokbot.py .
 
-# Create logs directory
-RUN mkdir -p /app/logs
-
 # Set environment variable for unbuffered Python output
 ENV PYTHONUNBUFFERED=1
 

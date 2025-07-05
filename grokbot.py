@@ -8,6 +8,8 @@ import traceback
 import re
 import os
 import sys
+import json
+import aiofiles
 
 # Load general environment variables
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -23,6 +25,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 
+USER_PREF_FILE = "/app/user_prefs/user_preferences.json"
+
 # Set up logging to both file and console
 root_logger = logging.getLogger()
 root_logger.setLevel(logging.INFO)
@@ -30,7 +34,9 @@ root_logger.setLevel(logging.INFO)
 for handler in root_logger.handlers[:]:
     root_logger.removeHandler(handler)
 
-file_handler = logging.FileHandler('/app/logs/bot.log')
+log_dir = '/app/logs'
+os.makedirs(log_dir, exist_ok=True)
+file_handler = logging.FileHandler(os.path.join(log_dir, 'bot.log'))
 console_handler = logging.StreamHandler(sys.stdout)
 
 formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
@@ -57,6 +63,26 @@ async def on_ready():
         logging.info(f"Logged in as {bot.user.name}")
     else:
         logging.info("Logged in, but bot user is None somehow?")
+    # Load user API preferences from file
+    try:
+        if os.path.exists(USER_PREF_FILE):
+            async with aiofiles.open(USER_PREF_FILE, 'r') as f:
+                content = await f.read()
+                if content:
+                    prefs = json.loads(content)
+                    for user_id_str, api_choice in prefs.items():
+                        try:
+                            user_id = int(user_id_str)
+                        except ValueError:
+                            continue
+                        user_api_selection[user_id] = api_choice
+                    logging.info(f"Loaded user preferences for {len(user_api_selection)} users.")
+    except FileNotFoundError:
+        logging.info("User preferences file not found; starting with empty preferences.")
+    except json.JSONDecodeError as e:
+        logging.error(f"JSON decode error in preferences file: {str(e)}; starting with empty preferences.")
+    except Exception as e:
+        logging.error(f"Error loading user preferences: {str(e)}")
     # Sync slash commands on startup
     try:
         synced = await bot.tree.sync()
@@ -83,8 +109,15 @@ async def selectapi(interaction: discord.Interaction, api: app_commands.Choice[s
             await interaction.response.send_message("OpenAI API is not configured.", ephemeral=True)
             return
 
-    # Update user preference and confirm
+    # Update user preference
     user_api_selection[interaction.user.id] = api.value
+    # Save updated preferences to file
+    try:
+        async with aiofiles.open(USER_PREF_FILE, 'w') as f:
+            prefs_to_save = {str(k): v for k, v in user_api_selection.items()}
+            await f.write(json.dumps(prefs_to_save))
+    except Exception as e:
+        logging.error(f"Failed to save user preferences: {str(e)}")
     await interaction.response.send_message(f"Selected {api.name} for your questions.", ephemeral=True)
 
 # Split text into chunks at newlines or sentence boundaries within max_length
@@ -119,7 +152,8 @@ async def process_message_queue():
             logging.error(f"Queue processing error: {str(e)}\n{traceback.format_exc()}")
         finally:
             message_queue.task_done()
-        await asyncio.sleep(1)
+        if message_queue.empty():
+            await asyncio.sleep(1)
 
 # Process a single message
 async def handle_message(message):
@@ -161,7 +195,6 @@ async def handle_message(message):
         context = question
 
     # Make sure other users mentioned are tagged in the response
-
     mentions = [f"<@!{user.id}>" for user in message.mentions if user != bot.user]
     mention_text = " ".join(mentions) + " " if mentions else ""
     logging.info(f"Context sent to API: {context}")
@@ -189,7 +222,7 @@ async def handle_message(message):
             "stream": False,
             "max_tokens": MAX_TOKENS
         }
-    else:  
+    else:
         if not OPENAI_API_KEY:
             await message.channel.send(f"{message.author.mention} Sorry, the OpenAI API is not configured.")
             return
@@ -242,20 +275,20 @@ async def handle_message(message):
                         logging.error(f"API timeout ({selected_api})")
                         await message.channel.send(f"{message.author.mention} Sorry, the {selected_api.upper()} API request timed out")
                         return
-            
+
             if not isinstance(response_data, dict) or "choices" not in response_data or not response_data["choices"]:
                 logging.error(f"Invalid API response format ({selected_api}): {response_data}")
                 await message.channel.send(f"{message.author.mention} Sorry, the {selected_api.upper()} API returned an invalid response")
                 return
-            
+
             answer = response_data["choices"][0]["message"]["content"]
             if selected_api:
                 api_name = "xAI" if selected_api == "xai" else "OpenAI"
                 answer += f"\n(answered by {api_name})"
-            
+
             max_length = 2000 - len(f"{message.author.mention} {mention_text}")
             chunks = split_message(answer, max_length)
-            
+
             for i, chunk in enumerate(chunks):
                 if i == 0:
                     final_message = f"{message.author.mention} {mention_text} {chunk}"
@@ -272,7 +305,7 @@ async def handle_message(message):
                         else:
                             raise
                     await asyncio.sleep(0.5)
-        
+
         except (KeyError, IndexError) as e:
             logging.error(f"Error parsing API response ({selected_api}): {str(e)}\n{traceback.format_exc()}")
             await message.channel.send(f"{message.author.mention} Sorry, there was an error processing the {selected_api.upper()} API response")
