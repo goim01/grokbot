@@ -8,5 +8,8 @@ services:
       - .env
     volumes:
       - ./logs:/app/logs
-      - ./user_preferences.json:/app/user_preferences.json
+      - type: bind
+        source: ./user_preferences.json
+        target: /app/user_preferences.json
+        read_only: true
     restart: unless-stopped
