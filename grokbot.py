@@ -25,7 +25,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 
-USER_PREF_FILE = "/app/user_preferences.json"
+USER_PREF_FILE = "/app/user_prefs/user_preferences.json"
 
 # Set up logging to both file and console
 root_logger = logging.getLogger()
