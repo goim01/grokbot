@@ -156,6 +156,12 @@ async def handle_message(message):
     else:
         context = question
 
+    # Make sure other users mentioned are tagged in the response
+
+    mentions = [f"<@!{user.id}>" for user in message.mentions if user != bot.user]
+    mention_text = " ".join(mentions) + " " if mentions else ""
+    logging.info(f"Context sent to API: {context}")
+
     # Determine which API to use (default to xAI)
     selected_api = user_api_selection.get(message.author.id, "xai")
     logging.info(f"Selected API: {selected_api}")
@@ -240,12 +246,12 @@ async def handle_message(message):
                 api_name = "xAI" if selected_api == "xai" else "OpenAI"
                 answer += f"\n(answered by {api_name})"
             
-            max_length = 2000 - len(f"{message.author.mention}")
+            max_length = 2000 - len(f"{message.author.mention} {mention_text}")
             chunks = split_message(answer, max_length)
             
             for i, chunk in enumerate(chunks):
                 if i == 0:
-                    final_message = f"{message.author.mention} {chunk}"
+                    final_message = f"{message.author.mention} {mention_text} {chunk}"
                 else:
                     final_message = chunk
                 if final_message.strip():
