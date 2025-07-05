@@ -13,6 +13,8 @@ COPY grokbot.py .
 
 # Create logs directory
 RUN mkdir -p /app/logs
+RUN touch /app/user_preferences.json
+RUN chmod 664 /app/user_preferences.json
 
 # Set environment variable for unbuffered Python output
 ENV PYTHONUNBUFFERED=1

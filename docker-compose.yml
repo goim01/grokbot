@@ -8,4 +8,5 @@ services:
       - .env
     volumes:
       - ./logs:/app/logs
+      - ./user_preferences.json:/app/user_preferences.json
     restart: unless-stopped
