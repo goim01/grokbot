@@ -23,7 +23,7 @@ XAI_CHAT_URL = "https://api.x.ai/v1/chat/completions"
 # OpenAI env variables
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
-OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
+OPENAI_CHAT_URL = "https://api.openai.com/v1/responses"
 
 USER_PREF_FILE = "/app/user_prefs/user_preferences.json"
 
