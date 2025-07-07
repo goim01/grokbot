@@ -29,19 +29,15 @@ USER_PREF_FILE = "/app/user_prefs/user_preferences.json"
 # Set up logging to both file and console
 root_logger = logging.getLogger()
 root_logger.setLevel(logging.INFO)
-
 for handler in root_logger.handlers[:]:
     root_logger.removeHandler(handler)
-
 log_dir = '/app/logs'
 os.makedirs(log_dir, exist_ok=True)
 file_handler = logging.FileHandler(os.path.join(log_dir, 'bot.log'))
 console_handler = logging.StreamHandler(sys.stdout)
-
 formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
 file_handler.setFormatter(formatter)
 console_handler.setFormatter(formatter)
-
 root_logger.addHandler(file_handler)
 root_logger.addHandler(console_handler)
 
@@ -62,6 +58,7 @@ async def on_ready():
         logging.info(f"Logged in as {bot.user.name}")
     else:
         logging.info("Logged in, but bot user is None somehow?")
+
     # Load user API preferences from file
     try:
         if os.path.exists(USER_PREF_FILE):
@@ -82,12 +79,14 @@ async def on_ready():
         logging.error(f"JSON decode error in preferences file: {str(e)}; starting with empty preferences.")
     except Exception as e:
         logging.error(f"Error loading user preferences: {str(e)}")
+
     # Sync slash commands on startup
     try:
         synced = await bot.tree.sync()
         logging.info(f"Synced {len(synced)} commands")
     except Exception as e:
         logging.error(f"Failed to sync commands: {e}")
+
     bot.loop.create_task(process_message_queue())
 
 # Slash command to select API (xAI or OpenAI)
@@ -98,23 +97,27 @@ async def on_ready():
     app_commands.Choice(name="OpenAI", value="openai")
 ])
 async def selectapi(interaction: discord.Interaction, api: app_commands.Choice[str]):
+    # Check API key configuration
     if api.value == "xai" and not XAI_API_KEY:
         await interaction.response.send_message("xAI API is not configured.", ephemeral=True)
         return
     elif api.value == "openai" and not OPENAI_API_KEY:
         await interaction.response.send_message("OpenAI API is not configured.", ephemeral=True)
         return
+
+    # Update user preference and persist
     user_api_selection[interaction.user.id] = api.value
-    # Save updated preferences to file
     try:
         async with aiofiles.open(USER_PREF_FILE, 'w') as f:
             prefs_to_save = {str(k): v for k, v in user_api_selection.items()}
             await f.write(json.dumps(prefs_to_save))
     except Exception as e:
         logging.error(f"Failed to save user preferences: {str(e)}")
+
     await interaction.response.send_message(f"Selected {api.name} for your questions.", ephemeral=True)
 
-# Split text into chunks at newlines or sentence boundaries within max_length
+# Helper to split long messages for Discord
+
 def split_message(text, max_length):
     chunks = []
     while text:
@@ -136,7 +139,7 @@ def split_message(text, max_length):
         text = text[split_point:].lstrip()
     return [chunk for chunk in chunks if chunk]
 
-# Background task to process messages from the queue
+# Background task that consumes message queue
 async def process_message_queue():
     while True:
         try:
@@ -149,41 +152,52 @@ async def process_message_queue():
         if message_queue.empty():
             await asyncio.sleep(1)
 
-# Process a single message
+# Handle each tagged message with or without image
 async def handle_message(message):
     raw_content = message.content
     question = raw_content
+
+    # Remove mention of bot from message content
     if bot.user:
         question = re.sub(f"<@!?{bot.user.id}>", "", question).strip()
+
     bot_name = bot.user.name.lower() if bot.user and bot.user.name else None
     bot_nickname = message.guild.get_member(bot.user.id).nick.lower() if message.guild and message.guild.get_member(bot.user.id) and message.guild.get_member(bot.user.id).nick else None
+
     if bot_name:
         question = re.sub(f"@{re.escape(bot_name)}", "", question, flags=re.IGNORECASE).strip()
     if bot_nickname:
         question = re.sub(f"@{re.escape(bot_nickname)}", "", question, flags=re.IGNORECASE).strip()
+
     for user in message.mentions:
         if user != bot.user:
             display_name = user.display_name if message.guild and message.guild.get_member(user.id) else user.name
             question = re.sub(f"<@!?{user.id}>", display_name, question).strip()
 
-    # If no question text remains, prompt the user
     if not question:
         await message.channel.send(f"{message.author.mention} Please ask a question or use slash commands.")
         return
 
-    # Check for replied-to original message
     original_content = None
+    reply_image_url = None
     if message.reference:
         try:
             original_message = await message.channel.fetch_message(message.reference.message_id)
-            if original_message and original_message.content:
-                original_content = original_message.content
+            if original_message:
+                if original_message.content:
+                    original_content = original_message.content
+                for attachment in original_message.attachments:
+                    if attachment.content_type and attachment.content_type.startswith("image/"):
+                        reply_image_url = attachment.url
+                        break
         except (discord.NotFound, discord.Forbidden):
             pass
 
     context = f"Original message: {original_content}\nUser question: {question}" if original_content else question
+
     mentions = [f"<@!{user.id}>" for user in message.mentions if user != bot.user]
     mention_text = " ".join(mentions) + " " if mentions else ""
+
     logging.info(f"Context sent to API: {context}")
 
     # Determine which API to use (default to xAI)
@@ -195,6 +209,9 @@ async def handle_message(message):
         if attachment.content_type and attachment.content_type.startswith("image/"):
             image_url = attachment.url
             break
+
+    if not image_url:
+        image_url = reply_image_url
 
     if selected_api == "xai":
         if not XAI_API_KEY:
@@ -223,8 +240,7 @@ async def handle_message(message):
             return
         api_url = OPENAI_CHAT_URL
         api_key = OPENAI_API_KEY
-        #model = "gpt-4-vision-preview" if image_url else OPENAI_MODEL 
-        model = OPENAI_MODEL 
+        model = OPENAI_MODEL
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
@@ -278,12 +294,10 @@ async def handle_message(message):
                         logging.error(f"Connection error ({selected_api}): {str(e)}")
                         await message.channel.send(f"{message.author.mention} Connection error with {selected_api.upper()}")
                         return
-
             if not response_data or "choices" not in response_data or not response_data["choices"]:
                 logging.error(f"Invalid API response format ({selected_api}): {response_data}")
                 await message.channel.send(f"{message.author.mention} Invalid response from {selected_api.upper()}")
                 return
-
             answer = response_data["choices"][0]["message"]["content"]
             answer += f"\n(answered by {'xAI' if selected_api == 'xai' else 'OpenAI'})"
             max_length = 2000 - len(f"{message.author.mention} {mention_text}")
@@ -297,6 +311,7 @@ async def handle_message(message):
             logging.error(f"Unexpected error ({selected_api}): {str(e)}\n{traceback.format_exc()}")
             await message.channel.send(f"{message.author.mention} Unexpected error from {selected_api.upper()}: {str(e)}")
 
+# Hook into Discord message events
 @bot.event
 async def on_message(message):
     if message.author != bot.user and bot.user in message.mentions:
