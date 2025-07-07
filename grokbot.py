@@ -223,7 +223,7 @@ async def handle_message(message):
             return
         api_url = OPENAI_CHAT_URL
         api_key = OPENAI_API_KEY
-        model = "gpt-4-vision-preview" if image_url else OPENAI_MODEL
+        # model = "gpt-4-vision-preview" if image_url else OPENAI_MODEL 
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
