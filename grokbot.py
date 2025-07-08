@@ -52,6 +52,49 @@ message_queue = asyncio.Queue()
 # Store user API selections
 user_api_selection = {}
 
+# Define tool definitions for function calling
+tool_definitions = [
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Perform a web search to get current information",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    }
+]
+
+# Define tool functions
+async def web_search(query):
+    # Perform an asynchronous web search using DuckDuckGo API
+    url = f"https://api.duckduckgo.com/?q={query}&format=json"
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            if response.status == 200:
+                data = await response.json()
+                if 'Abstract' in data and data['Abstract']:
+                    return data['Abstract']
+                elif 'RelatedTopics' in data and data['RelatedTopics']:
+                    return data['RelatedTopics'][0]['Text']
+                else:
+                    return "No results found"
+            else:
+                return "Failed to perform search"
+
+# Tools map for function calling
+tools_map = {
+    "web_search": web_search
+}
+
 @bot.event
 async def on_ready():
     if bot.user:
@@ -117,8 +160,8 @@ async def selectapi(interaction: discord.Interaction, api: app_commands.Choice[s
     await interaction.response.send_message(f"Selected {api.name} for your questions.", ephemeral=True)
 
 # Helper to split long messages for Discord
-
 def split_message(text, max_length):
+    # Split a long message into chunks that fit within Discord's message length limit
     chunks = []
     while text:
         if len(text) <= max_length:
@@ -141,6 +184,7 @@ def split_message(text, max_length):
 
 # Background task that consumes message queue
 async def process_message_queue():
+    # Process messages from the queue to handle concurrent user requests
     while True:
         try:
             message = await message_queue.get()
@@ -152,8 +196,34 @@ async def process_message_queue():
         if message_queue.empty():
             await asyncio.sleep(1)
 
+# Helper function to send API request with retries
+async def send_api_request(session, api_url, headers, payload):
+    #Send an API request with retry logic for handling rate limits and connection issues
+    retries = 3
+    for attempt in range(retries):
+        try:
+            async with session.post(api_url, headers=headers, json=payload, timeout=15) as response:
+                response.raise_for_status()
+                return await response.json()
+        except aiohttp.ClientResponseError as e:
+            if e.status == 429 and attempt < retries - 1:
+                await asyncio.sleep(2 ** attempt)
+                continue
+            else:
+                logging.error(f"API error: HTTP {e.status}: {await response.text()}")
+                raise
+        except (aiohttp.ClientConnectionError, asyncio.TimeoutError) as e:
+            if attempt < retries - 1:
+                await asyncio.sleep(2 ** attempt)
+                continue
+            else:
+                logging.error(f"Connection error: {str(e)}")
+                raise
+    raise Exception("Failed to get response after retries")
+
 # Handle each tagged message with or without image
 async def handle_message(message):
+    # Process user messages, handle API requests with function calling, and send responses
     raw_content = message.content
     question = raw_content
 
@@ -218,7 +288,7 @@ async def handle_message(message):
             await message.channel.send(f"{message.author.mention} Sorry, the xAI API is not configured.")
             return
         if image_url:
-            await message.channel.send(f"{message.author.mention} Sorry, image input is only supported with OpenAI at the moment.")
+            await message.channel.send(f"{message.author.mention} Sorry, image input is only supported with OpenAI at the moment. Use /selectapi to switch AI provider.")
             return
         api_url = XAI_CHAT_URL
         api_key = XAI_API_KEY
@@ -227,12 +297,6 @@ async def handle_message(message):
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "User-Agent": "DiscordBot/1.0"
-        }
-        payload = {
-            "model": model,
-            "messages": [{"role": "user", "content": context}],
-            "stream": False,
-            "max_tokens": MAX_TOKENS
         }
     else:
         if not OPENAI_API_KEY:
@@ -245,60 +309,72 @@ async def handle_message(message):
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
-        if image_url:
-            payload = {
-                "model": model,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": context},
-                            {"type": "image_url", "image_url": {"url": image_url}}
-                        ]
-                    }
-                ],
-                "max_tokens": MAX_TOKENS
-            }
-        else:
-            payload = {
-                "model": model,
-                "messages": [{"role": "user", "content": context}],
-                "max_tokens": MAX_TOKENS
-            }
 
     # Send request to AI API and stream response
     async with message.channel.typing():
         try:
-            retries = 3
-            response_data = None
-            async with aiohttp.ClientSession() as session:
-                for attempt in range(retries):
-                    try:
-                        async with session.post(api_url, headers=headers, json=payload, timeout=15) as response:
-                            response.raise_for_status()
-                            response_data = await response.json()
+            if selected_api == "openai" and image_url:
+                payload = {
+                    "model": model,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": context},
+                                {"type": "image_url", "image_url": {"url": image_url}}
+                            ]
+                        }
+                    ],
+                    "max_tokens": MAX_TOKENS
+                }
+                async with aiohttp.ClientSession() as session:
+                    response_data = await send_api_request(session, api_url, headers, payload)
+                    if "choices" in response_data and response_data["choices"]:
+                        answer = response_data["choices"][0]["message"]["content"]
+                    else:
+                        answer = "Invalid response from API"
+            else:
+                messages = [{"role": "user", "content": context}]
+                max_iterations = 5
+                async with aiohttp.ClientSession() as session:
+                    for iteration in range(max_iterations):
+                        payload = {
+                            "model": model,
+                            "messages": messages,
+                            "tools": tool_definitions,
+                            "tool_choice": "auto",
+                            "stream": False,
+                            "max_tokens": MAX_TOKENS
+                        }
+                        response_data = await send_api_request(session, api_url, headers, payload)
+                        if "choices" not in response_data or not response_data["choices"]:
+                            answer = "Invalid response from API"
                             break
-                    except aiohttp.ClientResponseError as e:
-                        if e.status == 429 and attempt < retries - 1:
-                            await asyncio.sleep(2 ** attempt)
-                            continue
-                        async with session.post(api_url, headers=headers, json=payload, timeout=15) as error_response:
-                            error_details = await error_response.text()
-                        logging.error(f"API error ({selected_api}): HTTP {e.status}: {error_details}")
-                        await message.channel.send(f"{message.author.mention} Error from {selected_api.upper()}: HTTP {e.status}")
-                        return
-                    except (aiohttp.ClientConnectionError, asyncio.TimeoutError) as e:
-                        if attempt < retries - 1:
-                            await asyncio.sleep(2 ** attempt)
-                            continue
-                        logging.error(f"Connection error ({selected_api}): {str(e)}")
-                        await message.channel.send(f"{message.author.mention} Connection error with {selected_api.upper()}")
-                        return
-            if not response_data or "choices" not in response_data or not response_data["choices"]:
-                logging.error(f"Invalid API response format ({selected_api}): {response_data}")
-                await message.channel.send(f"{message.author.mention} Invalid response from {selected_api.upper()}")
-                return
-            answer = response_data["choices"][0]["message"]["content"]
+                        message = response_data["choices"][0]["message"]
+                        if "tool_calls" not in message or not message["tool_calls"]:
+                            answer = message["content"]
+                            break
+                        else:
+                            messages.append(message)
+                            for tool_call in message["tool_calls"]:
+                                function_name = tool_call["function"]["name"]
+                                arguments = json.loads(tool_call["function"]["arguments"])
+                                if function_name in tools_map:
+                                    result = await tools_map[function_name](**arguments)
+                                    messages.append({
+                                        "role": "tool",
+                                        "content": str(result),
+                                        "tool_call_id": tool_call["id"]
+                                    })
+                                else:
+                                    messages.append({
+                                        "role": "tool",
+                                        "content": "Tool not found",
+                                        "tool_call_id": tool_call["id"]
+                                    })
+                    else:
+                        answer = "Maximum iterations reached without a final answer."
+
             answer += f"\n(answered by {'xAI' if selected_api == 'xai' else 'OpenAI'})"
             max_length = 2000 - len(f"{message.author.mention} {mention_text}")
             chunks = split_message(answer, max_length)
