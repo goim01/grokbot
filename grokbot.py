@@ -80,7 +80,7 @@ async def web_search(query):
     # Perform an asynchronous web search using DuckDuckGo via ddgs
     def sync_search():
         with DDGS() as ddgs:
-            results = ddgs.text(query, max_results=3)
+            results = ddgs.text(query, max_results=5)
             if results:
                 summary = f"Here are some search results for '{query}':\n"
                 for i, r in enumerate(results, 1):
