@@ -75,20 +75,32 @@ tool_definitions = [
 
 # Define tool functions
 async def web_search(query):
-    # Perform an asynchronous web search using DuckDuckGo API
+    """Perform an asynchronous web search using DuckDuckGo API."""
     url = f"https://api.duckduckgo.com/?q={query}&format=json"
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as response:
-            if response.status == 200:
-                data = await response.json()
-                if 'Abstract' in data and data['Abstract']:
-                    return data['Abstract']
-                elif 'RelatedTopics' in data and data['RelatedTopics']:
-                    return data['RelatedTopics'][0]['Text']
+            if response.status != 200:
+                return f"Failed to perform search: HTTP {response.status}"
+            text = await response.text()
+            try:
+                # Attempt to parse as JSON
+                data = json.loads(text)
+            except json.JSONDecodeError:
+                # Handle JSONP by removing callback wrapper
+                if text.startswith('callback('):
+                    text = text[len('callback('):-1]
+                    try:
+                        data = json.loads(text)
+                    except json.JSONDecodeError:
+                        return "Failed to parse search results"
                 else:
-                    return "No results found"
+                    return "Failed to parse search results"
+            if 'Abstract' in data and data['Abstract']:
+                return data['Abstract']
+            elif 'RelatedTopics' in data and data['RelatedTopics']:
+                return data['RelatedTopics'][0]['Text']
             else:
-                return "Failed to perform search"
+                return "No results found"
 
 # Tools map for function calling
 tools_map = {
@@ -198,7 +210,7 @@ async def process_message_queue():
 
 # Helper function to send API request with retries
 async def send_api_request(session, api_url, headers, payload):
-    #Send an API request with retry logic for handling rate limits and connection issues
+    # Send an API request with retry logic for handling rate limits and connection issues
     retries = 3
     for attempt in range(retries):
         try:
@@ -350,13 +362,13 @@ async def handle_message(message):
                         if "choices" not in response_data or not response_data["choices"]:
                             answer = "Invalid response from API"
                             break
-                        message = response_data["choices"][0]["message"]
-                        if "tool_calls" not in message or not message["tool_calls"]:
-                            answer = message["content"]
+                        response_message = response_data["choices"][0]["message"]
+                        if "tool_calls" not in response_message or not response_message["tool_calls"]:
+                            answer = response_message["content"]
                             break
                         else:
-                            messages.append(message)
-                            for tool_call in message["tool_calls"]:
+                            messages.append(response_message)
+                            for tool_call in response_message["tool_calls"]:
                                 function_name = tool_call["function"]["name"]
                                 arguments = json.loads(tool_call["function"]["arguments"])
                                 if function_name in tools_map:
