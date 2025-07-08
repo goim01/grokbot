@@ -10,7 +10,7 @@ import os
 import sys
 import json
 import aiofiles
-from duckduckgo_search import AsyncDDGS
+from ddgs import DDGS
 
 # Load general environment variables
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -76,10 +76,10 @@ tool_definitions = [
 
 # Define tool functions
 async def web_search(query):
-    """Perform an asynchronous web search using DuckDuckGo."""
-    try:
-        async with AsyncDDGS() as ddgs:
-            results = await ddgs.text(query, max_results=3)
+    # Perform an asynchronous web search using DuckDuckGo via ddgs
+    def sync_search():
+        with DDGS() as ddgs:
+            results = ddgs.text(query, max_results=3)
             if results:
                 summary = f"Here are some search results for '{query}':\n"
                 for i, r in enumerate(results, 1):
@@ -87,6 +87,8 @@ async def web_search(query):
                 return summary.strip()
             else:
                 return f"No results found for '{query}'"
+    try:
+        return await asyncio.to_thread(sync_search)
     except Exception as e:
         return f"Error performing search for '{query}': {str(e)}"
 
