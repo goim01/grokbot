@@ -10,9 +10,9 @@ import os
 import sys
 import json
 import aiofiles
-from ddgs import AsyncDDGS  # Import AsyncDDGS for web search
+from duckduckgo_search import AsyncDDGS
 
-# Load environment variables
+# Load general environment variables
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 MAX_TOKENS = int(os.getenv("MAX_TOKENS", 3000))
 
@@ -27,7 +27,7 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 USER_PREF_FILE = "/app/user_prefs/user_preferences.json"
 
-# Set up logging
+# Set up logging to both file and console
 root_logger = logging.getLogger()
 root_logger.setLevel(logging.INFO)
 for handler in root_logger.handlers[:]:
@@ -42,18 +42,18 @@ console_handler.setFormatter(formatter)
 root_logger.addHandler(file_handler)
 root_logger.addHandler(console_handler)
 
-# Set up Discord bot
+# Set up Discord bot with command prefix and intents
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Message queue
+# Message queue for handling concurrent questions
 message_queue = asyncio.Queue()
 
-# User API selections
+# Store user API selections
 user_api_selection = {}
 
-# Tool definitions for function calling
+# Define tool definitions for function calling
 tool_definitions = [
     {
         "type": "function",
@@ -74,9 +74,9 @@ tool_definitions = [
     }
 ]
 
-# Tool functions
+# Define tool functions
 async def web_search(query):
-    # Perform an asynchronous web search using DuckDuckGo via ddgs
+    """Perform an asynchronous web search using DuckDuckGo."""
     try:
         async with AsyncDDGS() as ddgs:
             results = await ddgs.text(query, max_results=3)
@@ -90,7 +90,7 @@ async def web_search(query):
     except Exception as e:
         return f"Error performing search for '{query}': {str(e)}"
 
-# Tools map
+# Tools map for function calling
 tools_map = {
     "web_search": web_search
 }
@@ -102,7 +102,7 @@ async def on_ready():
     else:
         logging.info("Logged in, but bot user is None somehow?")
 
-    # Load user API preferences
+    # Load user API preferences from file
     try:
         if os.path.exists(USER_PREF_FILE):
             async with aiofiles.open(USER_PREF_FILE, 'r') as f:
@@ -119,7 +119,7 @@ async def on_ready():
     except Exception as e:
         logging.error(f"Error loading user preferences: {str(e)}")
 
-    # Sync slash commands
+    # Sync slash commands on startup
     try:
         synced = await bot.tree.sync()
         logging.info(f"Synced {len(synced)} commands")
@@ -128,7 +128,7 @@ async def on_ready():
 
     bot.loop.create_task(process_message_queue())
 
-# Slash command to select API
+# Slash command to select API (xAI or OpenAI)
 @bot.tree.command(name="selectapi", description="Select the AI API (xAI or OpenAI)")
 @app_commands.describe(api="API to use (xAI or OpenAI)")
 @app_commands.choices(api=[
@@ -155,7 +155,7 @@ async def selectapi(interaction: discord.Interaction, api: app_commands.Choice[s
 
     await interaction.response.send_message(f"Selected {api.name} for your questions.", ephemeral=True)
 
-# Split long messages
+# Helper to split long messages for Discord
 def split_message(text, max_length):
     # Split a long message into chunks that fit within Discord's message length limit
     chunks = []
@@ -178,7 +178,7 @@ def split_message(text, max_length):
         text = text[split_point:].lstrip()
     return [chunk for chunk in chunks if chunk]
 
-# Process message queue
+# Background task that consumes message queue
 async def process_message_queue():
     # Process messages from the queue to handle concurrent user requests
     while True:
@@ -192,7 +192,7 @@ async def process_message_queue():
         if message_queue.empty():
             await asyncio.sleep(1)
 
-# Send API request with retries
+# Helper function to send API request with retries
 async def send_api_request(session, api_url, headers, payload):
     # Send an API request with retry logic for handling rate limits and connection issues
     retries = 3
@@ -217,7 +217,7 @@ async def send_api_request(session, api_url, headers, payload):
                 raise
     raise Exception("Failed to get response after retries")
 
-# Handle messages
+# Handle each tagged message with or without image
 async def handle_message(message):
     # Process user messages, handle API requests with function calling, and send responses
     raw_content = message.content
@@ -284,7 +284,7 @@ async def handle_message(message):
             await message.channel.send(f"{message.author.mention} Sorry, the xAI API is not configured.")
             return
         if image_url:
-            await message.channel.send(f"{message.author.mention} Sorry, image input is only supported with OpenAI.")
+            await message.channel.send(f"{message.author.mention} Sorry, image input is only supported with OpenAI at the moment.")
             return
         api_url = XAI_CHAT_URL
         api_key = XAI_API_KEY
@@ -383,7 +383,7 @@ async def handle_message(message):
             logging.error(f"Unexpected error ({selected_api}): {str(e)}\n{traceback.format_exc()}")
             await message.channel.send(f"{message.author.mention} Unexpected error from {selected_api.upper()}: {str(e)}")
 
-# Hook into message events
+# Hook into Discord message events
 @bot.event
 async def on_message(message):
     if message.author != bot.user and bot.user in message.mentions:
