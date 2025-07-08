@@ -11,6 +11,7 @@ import sys
 import json
 import aiofiles
 from ddgs import DDGS
+import datetime
 
 # Load general environment variables
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -281,6 +282,12 @@ async def handle_message(message):
     if not image_url:
         image_url = reply_image_url
 
+    # Get current date and time
+    current_time = datetime.datetime.now()
+    offset_str = current_time.strftime("%z")
+    offset_hours = offset_str[:3] if offset_str else "+00"
+    formatted_time = current_time.strftime(f"%I:%M %p {offset_hours} on %A, %B %d, %Y")
+
     if selected_api == "xai":
         if not XAI_API_KEY:
             await message.channel.send(f"{message.author.mention} Sorry, the xAI API is not configured.")
@@ -312,17 +319,19 @@ async def handle_message(message):
     async with message.channel.typing():
         try:
             if selected_api == "openai" and image_url:
+                messages = [
+                    {"role": "system", "content": f"Today's date and time is {formatted_time}."},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": context},
+                            {"type": "image_url", "image_url": {"url": image_url}}
+                        ]
+                    }
+                ]
                 payload = {
                     "model": model,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": context},
-                                {"type": "image_url", "image_url": {"url": image_url}}
-                            ]
-                        }
-                    ],
+                    "messages": messages,
                     "max_tokens": MAX_TOKENS
                 }
                 async with aiohttp.ClientSession() as session:
@@ -332,7 +341,10 @@ async def handle_message(message):
                     else:
                         answer = "Invalid response from API"
             else:
-                messages = [{"role": "user", "content": context}]
+                messages = [
+                    {"role": "system", "content": f"Today's date and time is {formatted_time}."},
+                    {"role": "user", "content": context}
+                ]
                 max_iterations = 5
                 async with aiohttp.ClientSession() as session:
                     for iteration in range(max_iterations):
