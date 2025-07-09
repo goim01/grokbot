@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
+from typing import Dict, List
 import aiohttp
 import asyncio
 import logging
@@ -256,7 +257,7 @@ async def handle_message(message):
             question = re.sub(f"<@!?{user.id}>", display_name, question).strip()
 
     if not question:
-        await message.channel.send(f"{message.author.mention} Please ask a question or use slash commands.")
+        await message.reply(f"Please ask a question or use slash commands.")  # Changed to reply
         return
 
     # Build reply chain context
@@ -314,10 +315,10 @@ async def handle_message(message):
 
     if selected_api == "xai":
         if not XAI_API_KEY:
-            await message.channel.send(f"{message.author.mention} Sorry, the xAI API is not configured.")
+            await message.reply(f"Sorry, the xAI API is not configured.")  # Changed to reply
             return
         if image_url:
-            await message.channel.send(f"{message.author.mention} Sorry, image input is only supported with OpenAI at the moment.")
+            await message.reply(f"Sorry, image input is only supported with OpenAI at the moment.")  # Changed to reply
             return
         api_url = XAI_CHAT_URL
         api_key = XAI_API_KEY
@@ -329,7 +330,7 @@ async def handle_message(message):
         }
     else:
         if not OPENAI_API_KEY:
-            await message.channel.send(f"{message.author.mention} Sorry, the OpenAI API is not configured.")
+            await message.reply(f"Sorry, the OpenAI API is not configured.")  # Changed to reply
             return
         api_url = OPENAI_CHAT_URL
         api_key = OPENAI_API_KEY
@@ -415,11 +416,11 @@ async def handle_message(message):
             for i, chunk in enumerate(chunks):
                 final_message = f"{message.author.mention} {mention_text} {chunk}" if i == 0 else chunk
                 if final_message.strip():
-                    await message.channel.send(final_message)
+                    await message.reply(final_message)  # Changed to reply
                     await asyncio.sleep(0.5)
         except Exception as e:
             logging.error(f"Unexpected error ({selected_api}): {str(e)}\n{traceback.format_exc()}")
-            await message.channel.send(f"{message.author.mention} Unexpected error from {selected_api.upper()}: {str(e)}")
+            await message.reply(f"Unexpected error from {selected_api.upper()}: {str(e)}")  # Changed to reply
 
 # Hook into Discord message events
 @bot.event
