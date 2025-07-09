@@ -411,10 +411,10 @@ async def handle_message(message):
                         answer = "Maximum iterations reached without a final answer."
 
             answer += f"\n(answered by {'xAI' if selected_api == 'xai' else 'OpenAI'})"
-            max_length = 2000 - len(f"{message.author.mention} {mention_text}")
+            max_length = 2000 - len(mention_text)  # Adjusted to account only for mention_text
             chunks = split_message(answer, max_length)
             for i, chunk in enumerate(chunks):
-                final_message = f"{message.author.mention} {mention_text} {chunk}" if i == 0 else chunk
+                final_message = f"{mention_text}{chunk}" if i == 0 else chunk
                 if final_message.strip():
                     await message.reply(final_message)  # Changed to reply
                     await asyncio.sleep(0.5)
