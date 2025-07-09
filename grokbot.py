@@ -152,7 +152,6 @@ async def on_ready():
         if aiohttp_session is not None:
             await aiohttp_session.close()
             aiohttp_session = None
-        # Write user preferences if dirty
         if user_pref_dirty:
             try:
                 async with aiofiles.open(USER_PREF_FILE, 'w') as f:
@@ -188,7 +187,7 @@ async def on_ready():
 ])
 async def selectapi(interaction: discord.Interaction, api: app_commands.Choice[str]):
     global user_pref_dirty
-    # Check API key configuration
+
     if api.value == "xai" and not XAI_API_KEY:
         await interaction.response.send_message("xAI API is not configured.", ephemeral=True)
         return
@@ -204,7 +203,6 @@ async def selectapi(interaction: discord.Interaction, api: app_commands.Choice[s
 
 # Helper to split long messages for Discord
 def split_message(text, max_length):
-    # Always use robust string chunking for Discord messages
     chunks = []
     while text:
         if len(text) <= max_length:
@@ -324,7 +322,7 @@ async def handle_message(message):
     # Limit reply chain fetches and cache recent messages (simple cache)
     reply_chain = []
     current_message = message
-    max_chain_length = 3  # reduced from 5
+    max_chain_length = 5
     try:
         for _ in range(max_chain_length):
             if not current_message.reference:
