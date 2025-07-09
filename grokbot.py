@@ -171,30 +171,26 @@ async def selectapi(interaction: discord.Interaction, api: app_commands.Choice[s
 
 # Helper to split long messages for Discord
 def split_message(text, max_length):
-    # Option 4: Use Discord's built-in chunking if available, else fallback
-    try:
-        import discord.utils
-        return list(discord.utils.as_chunks(text, max_length))
-    except Exception:
-        chunks = []
-        while text:
-            if len(text) <= max_length:
-                chunks.append(text)
+    # Always use robust string chunking for Discord messages
+    chunks = []
+    while text:
+        if len(text) <= max_length:
+            chunks.append(text)
+            break
+        split_point = max_length
+        search_range = max(0, max_length - 100)
+        for i in range(min(max_length, len(text)), search_range, -1):
+            if text[i - 1] in "\n.!?":
+                split_point = i
                 break
-            split_point = max_length
-            search_range = max(0, max_length - 100)
+        else:
             for i in range(min(max_length, len(text)), search_range, -1):
-                if text[i - 1] in "\n.!?":
+                if text[i - 1] == " ":
                     split_point = i
                     break
-            else:
-                for i in range(min(max_length, len(text)), search_range, -1):
-                    if text[i - 1] == " ":
-                        split_point = i
-                        break
-            chunks.append(text[:split_point].rstrip())
-            text = text[split_point:].lstrip()
-        return [chunk for chunk in chunks if chunk]
+        chunks.append(text[:split_point].rstrip())
+        text = text[split_point:].lstrip()
+    return [chunk for chunk in chunks if chunk]
 
 # Background task that consumes message queue
 async def process_message_queue():
