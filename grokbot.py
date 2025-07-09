@@ -56,6 +56,12 @@ message_queue = asyncio.Queue()
 # Store user API selections
 user_api_selection = {}
 
+# Regex caches for performance
+_re_bot_mention = None
+_re_bot_name = None
+_re_bot_nick = None
+_re_user_mention = {}
+
 # Batch user preference writes
 user_pref_dirty = False
 user_pref_last_write = 0
