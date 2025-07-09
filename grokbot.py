@@ -78,7 +78,6 @@ tool_definitions = [
 
 # Define tool functions
 async def web_search(query):
-    # Perform an asynchronous web search using DuckDuckGo via ddgs
     def sync_search():
         with DDGS() as ddgs:
             results = ddgs.text(query, max_results=5)
@@ -161,7 +160,6 @@ async def selectapi(interaction: discord.Interaction, api: app_commands.Choice[s
 
 # Helper to split long messages for Discord
 def split_message(text, max_length):
-    # Split a long message into chunks that fit within Discord's message length limit
     chunks = []
     while text:
         if len(text) <= max_length:
@@ -184,7 +182,6 @@ def split_message(text, max_length):
 
 # Background task that consumes message queue
 async def process_message_queue():
-    # Process messages from the queue to handle concurrent user requests
     while True:
         try:
             message = await message_queue.get()
@@ -201,7 +198,6 @@ class APIRetriesExceededError(Exception):
     """Raised when API request fails after maximum retries."""
 
 async def send_api_request(session, api_url, headers, payload):
-    # Send an API request with retry logic for handling rate limits and connection issues
     retries = 3
     for attempt in range(retries):
         response = None
@@ -214,7 +210,6 @@ async def send_api_request(session, api_url, headers, payload):
                 await asyncio.sleep(2 ** attempt)
                 continue
             else:
-                # Log only status and a limited part of the response body to avoid leaking sensitive info
                 error_body = ""
                 if response is not None:
                     try:
@@ -235,11 +230,9 @@ async def send_api_request(session, api_url, headers, payload):
 
 # Handle each tagged message with or without image
 async def handle_message(message):
-    # Process user messages, handle API requests with function calling, and send responses
     raw_content = message.content
     question = raw_content
 
-    # Remove mention of bot from message content
     if bot.user:
         question = re.sub(f"<@!?{bot.user.id}>", "", question).strip()
 
@@ -257,13 +250,13 @@ async def handle_message(message):
             question = re.sub(f"<@!?{user.id}>", display_name, question).strip()
 
     if not question:
-        await message.reply(f"Please ask a question or use slash commands.")  # Changed to reply
+        await message.reply(f"Please ask a question or use slash commands.")
         return
 
     # Build reply chain context
     reply_chain = []
     current_message = message
-    max_chain_length = 5  # Limit to prevent excessive context
+    max_chain_length = 5
     try:
         while current_message.reference and len(reply_chain) < max_chain_length:
             current_message = await current_message.channel.fetch_message(current_message.reference.message_id)
@@ -273,7 +266,7 @@ async def handle_message(message):
                 reply_chain.append(f"{author_name}: {content}")
             else:
                 break
-        reply_chain.reverse()  # Reverse to have oldest message first
+        reply_chain.reverse()
     except (discord.NotFound, discord.Forbidden) as e:
         logging.warning(f"Could not fetch reply chain: {str(e)}")
 
@@ -315,10 +308,10 @@ async def handle_message(message):
 
     if selected_api == "xai":
         if not XAI_API_KEY:
-            await message.reply(f"Sorry, the xAI API is not configured.")  # Changed to reply
+            await message.reply(f"Sorry, the xAI API is not configured.")
             return
         if image_url:
-            await message.reply(f"Sorry, image input is only supported with OpenAI at the moment.")  # Changed to reply
+            await message.reply(f"Sorry, image input is only supported with OpenAI at the moment.")
             return
         api_url = XAI_CHAT_URL
         api_key = XAI_API_KEY
@@ -330,7 +323,7 @@ async def handle_message(message):
         }
     else:
         if not OPENAI_API_KEY:
-            await message.reply(f"Sorry, the OpenAI API is not configured.")  # Changed to reply
+            await message.reply(f"Sorry, the OpenAI API is not configured.")
             return
         api_url = OPENAI_CHAT_URL
         api_key = OPENAI_API_KEY
@@ -340,7 +333,6 @@ async def handle_message(message):
             "Content-Type": "application/json"
         }
 
-    # Send request to AI API and stream response
     async with message.channel.typing():
         try:
             if selected_api == "openai" and image_url:
@@ -411,16 +403,16 @@ async def handle_message(message):
                         answer = "Maximum iterations reached without a final answer."
 
             answer += f"\n(answered by {'xAI' if selected_api == 'xai' else 'OpenAI'})"
-            max_length = 2000 - len(mention_text)  # Adjusted to account only for mention_text
+            max_length = 2000 - len(mention_text)
             chunks = split_message(answer, max_length)
             for i, chunk in enumerate(chunks):
                 final_message = f"{mention_text}{chunk}" if i == 0 else chunk
                 if final_message.strip():
-                    await message.reply(final_message)  # Changed to reply
+                    await message.reply(final_message)
                     await asyncio.sleep(0.5)
         except Exception as e:
             logging.error(f"Unexpected error ({selected_api}): {str(e)}\n{traceback.format_exc()}")
-            await message.reply(f"Unexpected error from {selected_api.upper()}: {str(e)}")  # Changed to reply
+            await message.reply(f"Unexpected error from {selected_api.upper()}: {str(e)}")
 
 # Hook into Discord message events
 @bot.event

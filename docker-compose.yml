@@ -16,7 +16,7 @@ services:
       "
     restart: "no"
 
-  muse:
+  aibot:
     image: ghcr.io/goim01/aibot:dev
     depends_on:
       - init
