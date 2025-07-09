@@ -196,10 +196,14 @@ async def process_message_queue():
             await asyncio.sleep(1)
 
 # Helper function to send API request with retries
+class APIRetriesExceededError(Exception):
+    """Raised when API request fails after maximum retries."""
+
 async def send_api_request(session, api_url, headers, payload):
     # Send an API request with retry logic for handling rate limits and connection issues
     retries = 3
     for attempt in range(retries):
+        response = None
         try:
             async with session.post(api_url, headers=headers, json=payload, timeout=15) as response:
                 response.raise_for_status()
@@ -209,7 +213,15 @@ async def send_api_request(session, api_url, headers, payload):
                 await asyncio.sleep(2 ** attempt)
                 continue
             else:
-                logging.error(f"API error: HTTP {e.status}: {await response.text()}")
+                # Log only status and a limited part of the response body to avoid leaking sensitive info
+                error_body = ""
+                if response is not None:
+                    try:
+                        error_body = await response.text()
+                        error_body = error_body[:500]  # Limit to first 500 chars
+                    except Exception:
+                        error_body = "<unable to read response body>"
+                logging.error(f"API error: HTTP {e.status}: {error_body}")
                 raise
         except (aiohttp.ClientConnectionError, asyncio.TimeoutError) as e:
             if attempt < retries - 1:
@@ -218,7 +230,7 @@ async def send_api_request(session, api_url, headers, payload):
             else:
                 logging.error(f"Connection error: {str(e)}")
                 raise
-    raise Exception("Failed to get response after retries")
+    raise APIRetriesExceededError("Failed to get response after retries")
 
 # Handle each tagged message with or without image
 async def handle_message(message):
@@ -247,22 +259,43 @@ async def handle_message(message):
         await message.channel.send(f"{message.author.mention} Please ask a question or use slash commands.")
         return
 
-    original_content = None
-    reply_image_url = None
-    if message.reference:
-        try:
-            original_message = await message.channel.fetch_message(message.reference.message_id)
-            if original_message:
-                if original_message.content:
-                    original_content = original_message.content
-                for attachment in original_message.attachments:
-                    if attachment.content_type and attachment.content_type.startswith("image/"):
-                        reply_image_url = attachment.url
-                        break
-        except (discord.NotFound, discord.Forbidden):
-            pass
+    # Build reply chain context
+    reply_chain = []
+    current_message = message
+    max_chain_length = 5  # Limit to prevent excessive context
+    try:
+        while current_message.reference and len(reply_chain) < max_chain_length:
+            current_message = await current_message.channel.fetch_message(current_message.reference.message_id)
+            if current_message:
+                author_name = current_message.author.display_name if message.guild and message.guild.get_member(current_message.author.id) else current_message.author.name
+                content = current_message.content if current_message.content else "<no text content>"
+                reply_chain.append(f"{author_name}: {content}")
+            else:
+                break
+        reply_chain.reverse()  # Reverse to have oldest message first
+    except (discord.NotFound, discord.Forbidden) as e:
+        logging.warning(f"Could not fetch reply chain: {str(e)}")
 
-    context = f"Original message: {original_content}\nUser question: {question}" if original_content else question
+    # Include image from the latest message or reply chain
+    image_url = None
+    for attachment in message.attachments:
+        if attachment.content_type and attachment.content_type.startswith("image/"):
+            image_url = attachment.url
+            break
+    if not image_url and reply_chain:
+        current_message = message
+        while current_message.reference and not image_url:
+            try:
+                current_message = await current_message.channel.fetch_message(current_message.reference.message_id)
+                for attachment in current_message.attachments:
+                    if attachment.content_type and attachment.content_type.startswith("image/"):
+                        image_url = attachment.url
+                        break
+            except (discord.NotFound, discord.Forbidden):
+                break
+
+    # Construct context with reply chain
+    context = f"Conversation history:\n" + "\n".join(reply_chain) + f"\nCurrent question from {message.author.display_name}: {question}" if reply_chain else question
 
     mentions = [f"<@!{user.id}>" for user in message.mentions if user != bot.user]
     mention_text = " ".join(mentions) + " " if mentions else ""
@@ -272,15 +305,6 @@ async def handle_message(message):
     # Determine which API to use (default to xAI)
     selected_api = user_api_selection.get(message.author.id, "xai")
     logging.info(f"Selected API: {selected_api}")
-
-    image_url = None
-    for attachment in message.attachments:
-        if attachment.content_type and attachment.content_type.startswith("image/"):
-            image_url = attachment.url
-            break
-
-    if not image_url:
-        image_url = reply_image_url
 
     # Get current date and time
     current_time = datetime.datetime.now()
