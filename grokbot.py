@@ -400,7 +400,8 @@ async def handle_message(message):
         model = OPENAI_MODEL
         headers = {
             "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "User-Agent": "DiscordBot/1.0"
         }
 
     async with message.channel.typing():
