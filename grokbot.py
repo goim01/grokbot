@@ -338,21 +338,23 @@ async def handle_message(message):
     except (discord.NotFound, discord.Forbidden) as e:
         logging.warning(f"Could not fetch reply chain: {str(e)}")
 
-    # Include image from the latest message or reply chain
-    image_url = None
+    # Collect all image attachments from the message and its reply chain
+    image_urls = []
     for attachment in message.attachments:
         if attachment.content_type and attachment.content_type.startswith("image/"):
-            image_url = attachment.url
-            break
-    if not image_url and reply_chain:
+            image_urls.append(attachment.url)
+    if not image_urls and reply_chain:
         current_message = message
-        while current_message.reference and not image_url:
+        while current_message.reference:
+            found_image = False
             try:
                 current_message = await current_message.channel.fetch_message(current_message.reference.message_id)
                 for attachment in current_message.attachments:
                     if attachment.content_type and attachment.content_type.startswith("image/"):
-                        image_url = attachment.url
-                        break
+                        image_urls.append(attachment.url)
+                        found_image = True
+                if found_image:
+                    break
             except (discord.NotFound, discord.Forbidden):
                 break
 
@@ -378,7 +380,7 @@ async def handle_message(message):
         if not XAI_API_KEY:
             await message.reply(f"Sorry, the xAI API is not configured.")
             return
-        if image_url:
+        if image_urls:
             await message.reply(f"Sorry, image input is only supported with OpenAI at the moment.")
             return
         api_url = XAI_CHAT_URL
@@ -406,15 +408,18 @@ async def handle_message(message):
         try:
             # Use the global aiohttp session
             session = aiohttp_session
-            if selected_api == "openai" and image_url:
+            if selected_api == "openai" and image_urls:
+                # Compose the content with all images
+                content_list = [
+                    {"type": "text", "text": context}
+                ]
+                for url in image_urls:
+                    content_list.append({"type": "image_url", "image_url": {"url": url}})
                 messages = [
                     {"role": "system", "content": f"Today's date and time is {formatted_time}."},
                     {
                         "role": "user",
-                        "content": [
-                            {"type": "text", "text": context},
-                            {"type": "image_url", "image_url": {"url": image_url}}
-                        ]
+                        "content": content_list
                     }
                 ]
                 payload = {
