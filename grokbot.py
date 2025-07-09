@@ -51,6 +51,15 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# Log disconnects and reconnects to avoid error spam
+@bot.event
+async def on_disconnect():
+    logging.warning("Bot disconnected from Discord (WebSocket closed). Waiting for automatic reconnect...")
+
+@bot.event
+async def on_resumed():
+    logging.info("Bot connection to Discord resumed after disconnect.")
+
 # Message queue for handling concurrent questions
 message_queue = asyncio.Queue()
 
