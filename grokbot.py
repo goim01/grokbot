@@ -12,6 +12,7 @@ import os
 import sys
 import json
 import aiofiles
+import signal
 from ddgs import DDGS
 import datetime
 
@@ -143,6 +144,38 @@ async def on_ready():
         logging.info(f"Synced {len(synced)} commands")
     except Exception as e:
         logging.error(f"Failed to sync commands: {e}")
+
+
+    # Register graceful shutdown for aiohttp session and user prefs
+    async def shutdown():
+        global aiohttp_session, user_pref_dirty, user_pref_last_write
+        if aiohttp_session is not None:
+            await aiohttp_session.close()
+            aiohttp_session = None
+        # Write user preferences if dirty
+        if user_pref_dirty:
+            try:
+                async with aiofiles.open(USER_PREF_FILE, 'w') as f:
+                    prefs_to_save = {str(k): v for k, v in user_api_selection.items()}
+                    await f.write(json.dumps(prefs_to_save))
+                user_pref_dirty = False
+                user_pref_last_write = time.time()
+                logging.info("User preferences saved on shutdown.")
+            except Exception as e:
+                logging.error(f"Failed to save user preferences on shutdown: {str(e)}")
+
+    async def on_shutdown():
+        await shutdown()
+
+    # Register shutdown handler for SIGTERM/SIGINT
+    def _register_shutdown():
+        loop = asyncio.get_event_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, lambda: asyncio.create_task(on_shutdown()))
+            except NotImplementedError:
+                pass  # Not supported on Windows
+    _register_shutdown()
 
     bot.loop.create_task(process_message_queue())
 
