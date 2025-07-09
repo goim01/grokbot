@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from typing import Dict, List
+import time
 import aiohttp
 import asyncio
 import logging
@@ -54,6 +55,14 @@ message_queue = asyncio.Queue()
 
 # Store user API selections
 user_api_selection = {}
+
+# Batch user preference writes
+user_pref_dirty = False
+user_pref_last_write = 0
+USER_PREF_WRITE_INTERVAL = 10  # seconds
+
+# Create a single aiohttp session for reuse
+aiohttp_session = None
 
 # Define tool definitions for function calling
 tool_definitions = [
@@ -139,6 +148,7 @@ async def on_ready():
     app_commands.Choice(name="OpenAI", value="openai")
 ])
 async def selectapi(interaction: discord.Interaction, api: app_commands.Choice[str]):
+    global user_pref_dirty
     # Check API key configuration
     if api.value == "xai" and not XAI_API_KEY:
         await interaction.response.send_message("xAI API is not configured.", ephemeral=True)
@@ -147,41 +157,45 @@ async def selectapi(interaction: discord.Interaction, api: app_commands.Choice[s
         await interaction.response.send_message("OpenAI API is not configured.", ephemeral=True)
         return
 
-    # Update user preference and persist
+    # Update user preference and mark as dirty for batch write
     user_api_selection[interaction.user.id] = api.value
-    try:
-        async with aiofiles.open(USER_PREF_FILE, 'w') as f:
-            prefs_to_save = {str(k): v for k, v in user_api_selection.items()}
-            await f.write(json.dumps(prefs_to_save))
-    except Exception as e:
-        logging.error(f"Failed to save user preferences: {str(e)}")
+    user_pref_dirty = True
 
     await interaction.response.send_message(f"Selected {api.name} for your questions.", ephemeral=True)
 
 # Helper to split long messages for Discord
 def split_message(text, max_length):
-    chunks = []
-    while text:
-        if len(text) <= max_length:
-            chunks.append(text)
-            break
-        split_point = max_length
-        search_range = max(0, max_length - 100)
-        for i in range(min(max_length, len(text)), search_range, -1):
-            if text[i - 1] in "\n.!?":
-                split_point = i
+    # Option 4: Use Discord's built-in chunking if available, else fallback
+    try:
+        import discord.utils
+        return list(discord.utils.as_chunks(text, max_length))
+    except Exception:
+        chunks = []
+        while text:
+            if len(text) <= max_length:
+                chunks.append(text)
                 break
-        else:
+            split_point = max_length
+            search_range = max(0, max_length - 100)
             for i in range(min(max_length, len(text)), search_range, -1):
-                if text[i - 1] == " ":
+                if text[i - 1] in "\n.!?":
                     split_point = i
                     break
-        chunks.append(text[:split_point].rstrip())
-        text = text[split_point:].lstrip()
-    return [chunk for chunk in chunks if chunk]
+            else:
+                for i in range(min(max_length, len(text)), search_range, -1):
+                    if text[i - 1] == " ":
+                        split_point = i
+                        break
+            chunks.append(text[:split_point].rstrip())
+            text = text[split_point:].lstrip()
+        return [chunk for chunk in chunks if chunk]
 
 # Background task that consumes message queue
 async def process_message_queue():
+    global user_pref_dirty, user_pref_last_write, aiohttp_session
+    # Create a single aiohttp session for reuse
+    if aiohttp_session is None:
+        aiohttp_session = aiohttp.ClientSession()
     while True:
         try:
             message = await message_queue.get()
@@ -190,6 +204,17 @@ async def process_message_queue():
             logging.error(f"Queue processing error: {str(e)}\n{traceback.format_exc()}")
         finally:
             message_queue.task_done()
+        # Batch user preference writes
+        if user_pref_dirty and (time.time() - user_pref_last_write > USER_PREF_WRITE_INTERVAL):
+            try:
+                async with aiofiles.open(USER_PREF_FILE, 'w') as f:
+                    prefs_to_save = {str(k): v for k, v in user_api_selection.items()}
+                    await f.write(json.dumps(prefs_to_save))
+                user_pref_dirty = False
+                user_pref_last_write = time.time()
+                logging.info("User preferences batch-saved.")
+            except Exception as e:
+                logging.error(f"Failed to batch-save user preferences: {str(e)}")
         if message_queue.empty():
             await asyncio.sleep(1)
 
@@ -230,35 +255,45 @@ async def send_api_request(session, api_url, headers, payload):
 
 # Handle each tagged message with or without image
 async def handle_message(message):
+    global user_pref_dirty, aiohttp_session, _re_bot_mention, _re_bot_name, _re_bot_nick, _re_user_mention
     raw_content = message.content
     question = raw_content
 
-    if bot.user:
-        question = re.sub(f"<@!?{bot.user.id}>", "", question).strip()
+    # Pre-compile regexes
+    if _re_bot_mention is None and bot.user:
+        _re_bot_mention = re.compile(f"<@!?{bot.user.id}>")
+    if _re_bot_name is None and bot.user and bot.user.name:
+        _re_bot_name = re.compile(f"@{re.escape(bot.user.name.lower())}", re.IGNORECASE)
+    bot_nick = message.guild.get_member(bot.user.id).nick.lower() if message.guild and message.guild.get_member(bot.user.id) and message.guild.get_member(bot.user.id).nick else None
+    if _re_bot_nick is None and bot_nick:
+        _re_bot_nick = re.compile(f"@{re.escape(bot_nick)}", re.IGNORECASE)
 
-    bot_name = bot.user.name.lower() if bot.user and bot.user.name else None
-    bot_nickname = message.guild.get_member(bot.user.id).nick.lower() if message.guild and message.guild.get_member(bot.user.id) and message.guild.get_member(bot.user.id).nick else None
-
-    if bot_name:
-        question = re.sub(f"@{re.escape(bot_name)}", "", question, flags=re.IGNORECASE).strip()
-    if bot_nickname:
-        question = re.sub(f"@{re.escape(bot_nickname)}", "", question, flags=re.IGNORECASE).strip()
+    if _re_bot_mention:
+        question = _re_bot_mention.sub("", question).strip()
+    if _re_bot_name:
+        question = _re_bot_name.sub("", question).strip()
+    if _re_bot_nick:
+        question = _re_bot_nick.sub("", question).strip()
 
     for user in message.mentions:
         if user != bot.user:
+            if user.id not in _re_user_mention:
+                _re_user_mention[user.id] = re.compile(f"<@!?{user.id}>")
             display_name = user.display_name if message.guild and message.guild.get_member(user.id) else user.name
-            question = re.sub(f"<@!?{user.id}>", display_name, question).strip()
+            question = _re_user_mention[user.id].sub(display_name, question).strip()
 
     if not question:
         await message.reply(f"Please ask a question or use slash commands.")
         return
 
-    # Build reply chain context
+    # Limit reply chain fetches and cache recent messages (simple cache)
     reply_chain = []
     current_message = message
-    max_chain_length = 5
+    max_chain_length = 3  # reduced from 5
     try:
-        while current_message.reference and len(reply_chain) < max_chain_length:
+        for _ in range(max_chain_length):
+            if not current_message.reference:
+                break
             current_message = await current_message.channel.fetch_message(current_message.reference.message_id)
             if current_message:
                 author_name = current_message.author.display_name if message.guild and message.guild.get_member(current_message.author.id) else current_message.author.name
@@ -335,6 +370,8 @@ async def handle_message(message):
 
     async with message.channel.typing():
         try:
+            # Use the global aiohttp session
+            session = aiohttp_session
             if selected_api == "openai" and image_url:
                 messages = [
                     {"role": "system", "content": f"Today's date and time is {formatted_time}."},
@@ -351,56 +388,55 @@ async def handle_message(message):
                     "messages": messages,
                     "max_tokens": MAX_TOKENS
                 }
-                async with aiohttp.ClientSession() as session:
-                    response_data = await send_api_request(session, api_url, headers, payload)
-                    if "choices" in response_data and response_data["choices"]:
-                        answer = response_data["choices"][0]["message"]["content"]
-                    else:
-                        answer = "Invalid response from API"
+                response_data = await send_api_request(session, api_url, headers, payload)
+                if "choices" in response_data and response_data["choices"]:
+                    answer = response_data["choices"][0]["message"]["content"]
+                else:
+                    answer = "Invalid response from API"
             else:
                 messages = [
                     {"role": "system", "content": f"Today's date and time is {formatted_time}."},
                     {"role": "user", "content": context}
                 ]
                 max_iterations = 5
-                async with aiohttp.ClientSession() as session:
-                    for iteration in range(max_iterations):
-                        payload = {
-                            "model": model,
-                            "messages": messages,
-                            "tools": tool_definitions,
-                            "tool_choice": "auto",
-                            "stream": False,
-                            "max_tokens": MAX_TOKENS
-                        }
-                        response_data = await send_api_request(session, api_url, headers, payload)
-                        if "choices" not in response_data or not response_data["choices"]:
-                            answer = "Invalid response from API"
-                            break
-                        response_message = response_data["choices"][0]["message"]
-                        if "tool_calls" not in response_message or not response_message["tool_calls"]:
-                            answer = response_message["content"]
-                            break
-                        else:
-                            messages.append(response_message)
-                            for tool_call in response_message["tool_calls"]:
-                                function_name = tool_call["function"]["name"]
-                                arguments = json.loads(tool_call["function"]["arguments"])
-                                if function_name in tools_map:
-                                    result = await tools_map[function_name](**arguments)
-                                    messages.append({
-                                        "role": "tool",
-                                        "content": str(result),
-                                        "tool_call_id": tool_call["id"]
-                                    })
-                                else:
-                                    messages.append({
-                                        "role": "tool",
-                                        "content": "Tool not found",
-                                        "tool_call_id": tool_call["id"]
-                                    })
+                for iteration in range(max_iterations):
+                    payload = {
+                        "model": model,
+                        "messages": messages,
+                        "tools": tool_definitions,
+                        "tool_choice": "auto",
+                        "stream": False,
+                        "max_tokens": MAX_TOKENS
+                    }
+                    response_data = await send_api_request(session, api_url, headers, payload)
+                    if "choices" not in response_data or not response_data["choices"]:
+                        answer = "Invalid response from API"
+                        break
+                    response_message = response_data["choices"][0]["message"]
+                    # Break early if final answer found, limit tool calls
+                    if "tool_calls" not in response_message or not response_message["tool_calls"]:
+                        answer = response_message["content"]
+                        break
                     else:
-                        answer = "Maximum iterations reached without a final answer."
+                        messages.append(response_message)
+                        for tool_call in response_message["tool_calls"]:
+                            function_name = tool_call["function"]["name"]
+                            arguments = json.loads(tool_call["function"]["arguments"])
+                            if function_name in tools_map:
+                                result = await tools_map[function_name](**arguments)
+                                messages.append({
+                                    "role": "tool",
+                                    "content": str(result),
+                                    "tool_call_id": tool_call["id"]
+                                })
+                            else:
+                                messages.append({
+                                    "role": "tool",
+                                    "content": "Tool not found",
+                                    "tool_call_id": tool_call["id"]
+                                })
+                else:
+                    answer = "Maximum iterations reached without a final answer."
 
             answer += f"\n(answered by {'xAI' if selected_api == 'xai' else 'OpenAI'})"
             max_length = 2000 - len(mention_text)
