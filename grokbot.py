@@ -43,12 +43,28 @@ console_handler = logging.StreamHandler(sys.stdout)
 formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
 file_handler.setFormatter(formatter)
 console_handler.setFormatter(formatter)
+
 root_logger.addHandler(file_handler)
 root_logger.addHandler(console_handler)
 
-# Reduce discord library logging noise
-logging.getLogger("discord").setLevel(logging.WARNING)
-logging.getLogger("discord.gateway").setLevel(logging.WARNING)
+# Custom filter to suppress specific discord ConnectionClosed errors (console only)
+class SuppressConnectionClosedFilter(logging.Filter):
+    def filter(self, record):
+        # Suppress ERROR logs from discord or discord.gateway containing "ConnectionClosed" with code 1000
+        if record.levelno == logging.ERROR and 'ConnectionClosed' in record.getMessage():
+            if 'WebSocket closed with 1000' in record.getMessage():
+                return False  # Suppress this log
+        return True  # Allow all other logs
+
+# Only suppress ConnectionClosed in the console, not in the file
+console_handler.addFilter(SuppressConnectionClosedFilter())
+
+# Set discord loggers to WARNING, but do not add suppression filter here
+discord_logger = logging.getLogger("discord")
+discord_logger.setLevel(logging.WARNING)
+
+gateway_logger = logging.getLogger("discord.gateway")
+gateway_logger.setLevel(logging.WARNING)
 
 # Set up Discord bot with command prefix and intents
 intents = discord.Intents.default()
