@@ -46,6 +46,10 @@ console_handler.setFormatter(formatter)
 root_logger.addHandler(file_handler)
 root_logger.addHandler(console_handler)
 
+# Reduce discord library logging noise
+logging.getLogger("discord").setLevel(logging.WARNING)
+logging.getLogger("discord.gateway").setLevel(logging.WARNING)
+
 # Set up Discord bot with command prefix and intents
 intents = discord.Intents.default()
 intents.message_content = True
@@ -306,7 +310,8 @@ async def handle_message(message):
         _re_bot_mention = re.compile(f"<@!?{bot.user.id}>")
     if _re_bot_name is None and bot.user and bot.user.name:
         _re_bot_name = re.compile(f"@{re.escape(bot.user.name.lower())}", re.IGNORECASE)
-    bot_nick = message.guild.get_member(bot.user.id).nick.lower() if message.guild and message.guild.get_member(bot.user.id) and message.guild.get_member(bot.user.id).nick else None
+    bot_member = message.guild.get_member(bot.user.id) if message.guild else None
+    bot_nick = bot_member.nick.lower() if bot_member and bot_member.nick else None
     if _re_bot_nick is None and bot_nick:
         _re_bot_nick = re.compile(f"@{re.escape(bot_nick)}", re.IGNORECASE)
 
