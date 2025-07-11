@@ -125,7 +125,7 @@ tool_definitions = [
 async def web_search(query):
     def sync_search():
         with DDGS() as ddgs:
-            results = ddgs.text(query, max_results=5)
+            results = ddgs.text(query, max_results=10)
             if results:
                 summary = f"Here are some search results for '{query}':\n"
                 for i, r in enumerate(results, 1):
