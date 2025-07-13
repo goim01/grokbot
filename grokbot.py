@@ -289,7 +289,7 @@ async def send_api_request(session, api_url, headers, payload):
     for attempt in range(retries):
         response = None
         try:
-            async with session.post(api_url, headers=headers, json=payload, timeout=15) as response:
+            async with session.post(api_url, headers=headers, json=payload, timeout=30) as response:
                 response.raise_for_status()
                 return await response.json()
         except aiohttp.ClientResponseError as e:
