@@ -80,6 +80,10 @@ async def on_disconnect():
 async def on_resumed():
     logging.info("Bot connection to Discord resumed after disconnect.")
 
+@bot.event
+async def on_shard_ready(shard_id):
+    logging.info(f"Shard {shard_id} has connected")
+
 # Message queue for handling concurrent questions
 message_queue = asyncio.Queue()
 
@@ -173,7 +177,6 @@ async def on_ready():
         logging.info(f"Synced {len(synced)} commands")
     except Exception as e:
         logging.error(f"Failed to sync commands: {e}")
-
 
     # Register graceful shutdown for aiohttp session and user prefs
     async def shutdown():
