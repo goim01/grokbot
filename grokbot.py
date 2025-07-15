@@ -18,7 +18,7 @@ import datetime
 
 # Load general environment variables
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-MAX_TOKENS = int(os.getenv("MAX_TOKENS", 3000))
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", 5000))
 
 # xAI env variables
 XAI_API_KEY = os.getenv("XAI_API_KEY")
@@ -45,7 +45,7 @@ file_handler.setFormatter(formatter)
 console_handler.setFormatter(formatter)
 
 root_logger.addHandler(file_handler)
-# root_logger.addHandler(console_handler)
+root_logger.addHandler(console_handler)
 
 # Custom filter to suppress specific discord ConnectionClosed errors (console only)
 class SuppressConnectionClosedFilter(logging.Filter):
