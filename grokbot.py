@@ -54,7 +54,7 @@ class SuppressConnectionClosedFilter(logging.Filter):
         if record.levelno == logging.ERROR and 'ConnectionClosed' in record.getMessage():
             if 'WebSocket closed with 1000' in record.getMessage():
                 return False  # Suppress this log
-        return True  # Allow all other logs
+        return True  # Allow all other log
 
 # Only suppress ConnectionClosed in the console, not in the file
 console_handler.addFilter(SuppressConnectionClosedFilter())
