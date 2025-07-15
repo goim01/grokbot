@@ -69,7 +69,7 @@ gateway_logger.setLevel(logging.WARNING)
 # Set up Discord bot with command prefix and intents
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.AutoShardedBot(command_prefix="!", intents=intents)
 
 # Log disconnects and reconnects to avoid error spam
 @bot.event
