@@ -396,8 +396,8 @@ async def handle_message(message):
 
     logging.info(f"Context sent to API: {context}")
 
-    # Determine which API to use (default to xAI)
-    selected_api = user_api_selection.get(message.author.id, "xai")
+    # Determine which API to use (default to openai)
+    selected_api = user_api_selection.get(message.author.id, "openai")
     logging.info(f"Selected API: {selected_api}")
 
     # Get current date and time
