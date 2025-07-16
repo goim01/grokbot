@@ -299,6 +299,73 @@ async def airoast_error(interaction: discord.Interaction, error: app_commands.Ap
             f"Please wait {error.retry_after:.2f} seconds before using this command again.", ephemeral=True
         )
     else:
+        await interaction.response.send_message("Anversion error occurred while processing the command.", ephemeral=True)
+
+# Slash command to motivate a user using AI
+@bot.tree.command(name="aimotivate", description="Give cheesy and over-the-top motivational advice to a user")
+@app_commands.describe(member="The user to motivate", context="Optional additional context about the user")
+@checks.cooldown(1, 10)  # Once per 10 seconds per user
+async def aimotivate(interaction: discord.Interaction, member: discord.Member, context: str = None):
+    """Slash command to give cheesy and over-the-top motivational advice to a specified user using their nickname, avatar, and optional context."""
+    await interaction.response.defer()  # Defer response to handle API call delay
+    try:
+        # Get user's display name and avatar URL
+        display_name = member.global_name
+        avatar_url = member.avatar.url if member.avatar else member.default_avatar.url
+        
+        # Construct prompt for motivational advice
+        prompt = f"Give this user, {display_name}, some extremely cheesy and over-the-top motivational advice based on their nickname and their avatar. Make it as exaggerated and uplifting as possible. Don't hold back on the enthusiasm!"
+        if context:
+            context = context.strip()[:500]  # Limit to 500 characters
+            prompt += f" Additional context: {context}"
+        
+        # Get current time
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Prepare messages for OpenAI API
+        messages = [
+            {"role": "system", "content": f"The current date and time is {current_time}."},
+            {"role": "user", "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": avatar_url}}
+            ]}
+        ]
+        
+        # Construct payload for OpenAI API
+        payload = {
+            "model": OPENAI_MODEL,
+            "messages": messages,
+            "max_tokens": MAX_TOKENS,
+        }
+        
+        # Set headers for OpenAI API
+        headers = {
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json",
+            "User-Agent": "GrokBot/1.0"
+        }
+        
+        # Make API request to OpenAI
+        response = await send_api_request(aiohttp_session, OPENAI_CHAT_URL, headers, payload)
+        
+        # Extract the motivational advice from the response
+        answer = response["choices"][0]["message"]["content"]
+        
+        # Send the motivational advice back to the channel
+        await interaction.followup.send(f"Motivational advice for {member.mention}: {answer}")
+    
+    except Exception as e:
+        # Log error and inform user
+        logging.error(f"Error in aimotivate command: {e}")
+        await interaction.followup.send("Sorry, I couldn't generate motivational advice at this time.")
+
+@aimotivate.error
+async def aimotivate_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.CommandOnCooldown):
+        await interaction.response.send_message(
+            f"Please wait {error.retry_after:.2f} seconds before using this command again.", ephemeral=True
+        )
+    else:
         await interaction.response.send_message("An error occurred while processing the command.", ephemeral=True)
 
 # Helper to split long messages for Discord
