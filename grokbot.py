@@ -247,7 +247,7 @@ async def airoast(interaction: discord.Interaction, member: discord.Member, cont
         avatar_url = member.avatar.url if member.avatar else member.default_avatar.url
         
         # Construct prompt for the roast
-        prompt = f"Roast this user in a funny way based on their nickname '{display_name}' and their avatar. Make it humorous and don't be afraid of offsensive jokes since it's a roast between friends and should not be taken seriously."
+        prompt = f"Roast this user in a funny way based on their nickname '{display_name}' and their avatar. Make it humorous and don't be afraid of offensive jokes since it's a roast between friends and should not be taken seriously."
         if context and context.strip():
             context = context.strip()[:500]  # Limit to 500 characters
             prompt += f" Additional context: {context}"
