@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
+from discord.app_commands import checks
 from typing import Dict, List
 import time
 import aiohttp
@@ -233,10 +234,12 @@ async def selectapi(interaction: discord.Interaction, api: app_commands.Choice[s
 
     await interaction.response.send_message(f"Selected {api.name} for your questions.", ephemeral=True)
 
+# Slash command to roast a user using AI
 @bot.tree.command(name="airoast", description="Roast a user in a funny way")
-@app_commands.describe(member="The user to roast")
-async def airoast(interaction: discord.Interaction, member: discord.Member):
-    """Slash command to roast a specified user using their nickname and avatar."""
+@app_commands.describe(member="The user to roast", context="Optional additional context about the user")
+@checks.cooldown(1, 10)  # Once per 10 seconds per user
+async def airoast(interaction: discord.Interaction, member: discord.Member, context: str = None):
+    """Slash command to roast a specified user using their nickname, avatar, and optional context."""
     await interaction.response.defer()  # Defer response to handle API call delay
     try:
         # Get user's display name and avatar URL
@@ -244,8 +247,13 @@ async def airoast(interaction: discord.Interaction, member: discord.Member):
         avatar_url = member.avatar.url if member.avatar else member.default_avatar.url
         
         # Construct prompt for the roast
+        prompt = f"Roast this user in a funny way based on their nickname '{display_name}' and their avatar."
+        if context and context.strip():
+            context = context.strip()[:500]  # Limit to 500 characters
+            prompt += f" Additional context: {context}"
+        
+        # Get current time
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        prompt = f"Roast this discord user in a funny way based on their nickname '{display_name}' and their avatar."
         
         # Prepare messages for OpenAI API
         messages = [
@@ -283,6 +291,15 @@ async def airoast(interaction: discord.Interaction, member: discord.Member):
         # Log error and inform user
         logging.error(f"Error in airoast command: {e}")
         await interaction.followup.send("Sorry, I couldn't generate a roast at this time.")
+
+@airoast.error
+async def airoast_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.CommandOnCooldown):
+        await interaction.response.send_message(
+            f"Please wait {error.retry_after:.2f} seconds before using this command again.", ephemeral=True
+        )
+    else:
+        await interaction.response.send_message("An error occurred while processing the command.", ephemeral=True)
 
 # Helper to split long messages for Discord
 def split_message(text, max_length):
