@@ -233,6 +233,57 @@ async def selectapi(interaction: discord.Interaction, api: app_commands.Choice[s
 
     await interaction.response.send_message(f"Selected {api.name} for your questions.", ephemeral=True)
 
+@bot.tree.command(name="airoast", description="Roast a user in a funny way")
+@app_commands.describe(member="The user to roast")
+async def airoast(interaction: discord.Interaction, member: discord.Member):
+    """Slash command to roast a specified user using their nickname and avatar."""
+    await interaction.response.defer()  # Defer response to handle API call delay
+    try:
+        # Get user's display name and avatar URL
+        display_name = member.display_name
+        avatar_url = member.avatar.url if member.avatar else member.default_avatar.url
+        
+        # Construct prompt for the roast
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        prompt = f"Roast this discord user in a funny way based on their nickname '{display_name}' and their avatar."
+        
+        # Prepare messages for OpenAI API
+        messages = [
+            {"role": "system", "content": f"The current date and time is {current_time}."},
+            {"role": "user", "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": avatar_url}}
+            ]}
+        ]
+        
+        # Construct payload for OpenAI API
+        payload = {
+            "model": OPENAI_MODEL,
+            "messages": messages,
+            "max_tokens": MAX_TOKENS,
+        }
+        
+        # Set headers for OpenAI API
+        headers = {
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json",
+            "User-Agent": "GrokBot/1.0"
+        }
+        
+        # Make API request to OpenAI
+        response = await send_api_request(aiohttp_session, OPENAI_CHAT_URL, headers, payload)
+        
+        # Extract the roast from the response
+        answer = response["choices"][0]["message"]["content"]
+        
+        # Send the roast back to the channel
+        await interaction.followup.send(f"Roast for {member.mention}: {answer}")
+    
+    except Exception as e:
+        # Log error and inform user
+        logging.error(f"Error in airoast command: {e}")
+        await interaction.followup.send("Sorry, I couldn't generate a roast at this time.")
+
 # Helper to split long messages for Discord
 def split_message(text, max_length):
     chunks = []
