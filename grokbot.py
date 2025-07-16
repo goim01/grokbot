@@ -243,11 +243,11 @@ async def airoast(interaction: discord.Interaction, member: discord.Member, cont
     await interaction.response.defer()  # Defer response to handle API call delay
     try:
         # Get user's display name and avatar URL
-        display_name = member.display_name
+        display_name = member.global_name
         avatar_url = member.avatar.url if member.avatar else member.default_avatar.url
         
         # Construct prompt for the roast
-        prompt = f"Roast this user in a funny way based on their nickname '{display_name}' and their avatar."
+        prompt = f"Roast this user in a funny way based on their nickname '{display_name}' and their avatar. Make it humorous and don't be afraid of offsensive jokes since it's a roast between friends and should not be taken seriously."
         if context and context.strip():
             context = context.strip()[:500]  # Limit to 500 characters
             prompt += f" Additional context: {context}"
