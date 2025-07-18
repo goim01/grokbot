@@ -20,6 +20,7 @@ import datetime
 # Load general environment variables
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 MAX_TOKENS = int(os.getenv("MAX_TOKENS", 5000))
+WORKER_COUNT = int(os.getenv("WORKER_COUNT", 5))  # Dynamic worker count
 
 # xAI env variables
 XAI_API_KEY = os.getenv("XAI_API_KEY")
@@ -179,22 +180,38 @@ async def on_ready():
     except Exception as e:
         logging.error(f"Failed to sync commands: {e}")
 
+    # Create lock for user preferences
+    global user_pref_lock
+    user_pref_lock = asyncio.Lock()
+
+    # Create a single aiohttp session for reuse
+    global aiohttp_session
+    aiohttp_session = aiohttp.ClientSession()
+
+    # Start multiple worker tasks
+    for _ in range(WORKER_COUNT):
+        bot.loop.create_task(worker(message_queue))
+
+    # Start periodic user preference saver
+    bot.loop.create_task(save_user_prefs_periodically())
+
     # Register graceful shutdown for aiohttp session and user prefs
     async def shutdown():
         global aiohttp_session, user_pref_dirty, user_pref_last_write
         if aiohttp_session is not None:
             await aiohttp_session.close()
             aiohttp_session = None
-        if user_pref_dirty:
-            try:
-                async with aiofiles.open(USER_PREF_FILE, 'w') as f:
-                    prefs_to_save = {str(k): v for k, v in user_api_selection.items()}
-                    await f.write(json.dumps(prefs_to_save))
-                user_pref_dirty = False
-                user_pref_last_write = time.time()
-                logging.info("User preferences saved on shutdown.")
-            except Exception as e:
-                logging.error(f"Failed to save user preferences on shutdown: {str(e)}")
+        async with user_pref_lock:
+            if user_pref_dirty:
+                try:
+                    async with aiofiles.open(USER_PREF_FILE, 'w') as f:
+                        prefs_to_save = {str(k): v for k, v in user_api_selection.items()}
+                        await f.write(json.dumps(prefs_to_save))
+                    user_pref_dirty = False
+                    user_pref_last_write = time.time()
+                    logging.info("User preferences saved on shutdown.")
+                except Exception as e:
+                    logging.error(f"Failed to save user preferences on shutdown: {str(e)}")
 
     async def on_shutdown():
         await shutdown()
@@ -208,8 +225,6 @@ async def on_ready():
             except NotImplementedError:
                 pass  # Not supported on Windows
     _register_shutdown()
-
-    bot.loop.create_task(process_message_queue())
 
 # Slash command to select API (xAI or OpenAI)
 @bot.tree.command(name="selectapi", description="Select the AI API (xAI or OpenAI)")
@@ -229,8 +244,9 @@ async def selectapi(interaction: discord.Interaction, api: app_commands.Choice[s
         return
 
     # Update user preference and mark as dirty for batch write
-    user_api_selection[interaction.user.id] = api.value
-    user_pref_dirty = True
+    async with user_pref_lock:
+        user_api_selection[interaction.user.id] = api.value
+        user_pref_dirty = True
 
     await interaction.response.send_message(f"Selected {api.name} for your questions.", ephemeral=True)
 
@@ -390,33 +406,32 @@ def split_message(text, max_length):
         text = text[split_point:].lstrip()
     return [chunk for chunk in chunks if chunk]
 
-# Background task that consumes message queue
-async def process_message_queue():
-    global user_pref_dirty, user_pref_last_write, aiohttp_session
-    # Create a single aiohttp session for reuse
-    if aiohttp_session is None:
-        aiohttp_session = aiohttp.ClientSession()
+# Worker function to process messages from the queue
+async def worker(queue):
     while True:
+        message = await queue.get()
         try:
-            message = await message_queue.get()
             await handle_message(message)
         except Exception as e:
-            logging.error(f"Queue processing error: {str(e)}\n{traceback.format_exc()}")
+            logging.error(f"Error in worker: {e}\n{traceback.format_exc()}")
         finally:
-            message_queue.task_done()
-        # Batch user preference writes
-        if user_pref_dirty and (time.time() - user_pref_last_write > USER_PREF_WRITE_INTERVAL):
-            try:
-                async with aiofiles.open(USER_PREF_FILE, 'w') as f:
-                    prefs_to_save = {str(k): v for k, v in user_api_selection.items()}
-                    await f.write(json.dumps(prefs_to_save))
-                user_pref_dirty = False
-                user_pref_last_write = time.time()
-                logging.info("User preferences batch-saved.")
-            except Exception as e:
-                logging.error(f"Failed to batch-save user preferences: {str(e)}")
-        if message_queue.empty():
-            await asyncio.sleep(1)
+            queue.task_done()
+
+# Periodic task to save user preferences
+async def save_user_prefs_periodically():
+    while True:
+        await asyncio.sleep(USER_PREF_WRITE_INTERVAL)
+        async with user_pref_lock:
+            if user_pref_dirty:
+                try:
+                    async with aiofiles.open(USER_PREF_FILE, 'w') as f:
+                        prefs_to_save = {str(k): v for k, v in user_api_selection.items()}
+                        await f.write(json.dumps(prefs_to_save))
+                    user_pref_dirty = False
+                    user_pref_last_write = time.time()
+                    logging.info("User preferences saved periodically.")
+                except Exception as e:
+                    logging.error(f"Failed to save user preferences periodically: {str(e)}")
 
 # Helper function to send API request with retries
 class APIRetriesExceededError(Exception):
