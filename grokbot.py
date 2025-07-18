@@ -22,6 +22,7 @@ from collections import deque
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 MAX_TOKENS = int(os.getenv("MAX_TOKENS", 5000))
 WORKER_COUNT = int(os.getenv("WORKER_COUNT", 5))  # Dynamic worker count
+BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID", 248083498433380352))  # Default to owner ID if not set
 
 # xAI env variables
 XAI_API_KEY = os.getenv("XAI_API_KEY")
@@ -105,7 +106,7 @@ user_pref_last_write = 0
 USER_PREF_WRITE_INTERVAL = 10  # seconds
 
 # Create a single aiohttp session for reuse
-aiohttp_session = None
+aio_EDITED_session = None
 
 # Define tool definitions for function calling
 tool_definitions = [
@@ -416,9 +417,20 @@ async def aimotivate_error(interaction: discord.Interaction, error: app_commands
     else:
         await interaction.response.send_message("An error occurred while processing the command.", ephemeral=True)
 
+# Custom check for restricting checklog to a specific user ID
+def is_authorized_user():
+    async def predicate(interaction: discord.Interaction) -> bool:
+        authorized_user_id = BOT_OWNER_ID
+        if interaction.user.id != authorized_user_id:
+            await interaction.response.send_message("You are not authorized to use this command.", ephemeral=True)
+            return False
+        return True
+    return app_commands.check(predicate)
+
 # Slash command to check the last 100 lines of the bot.log file
 @bot.tree.command(name="checklog", description="Post the last 50 lines of the bot.log file")
 @checks.cooldown(1, 30)  # Limit to prevent abuse
+@is_authorized_user()  # Restrict to specific user ID
 async def checklog(interaction: discord.Interaction):
     await interaction.response.defer()  # Defer the response to handle potential delays
     try:
