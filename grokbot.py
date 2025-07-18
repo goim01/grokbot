@@ -154,6 +154,16 @@ tools_map = {
     "web_search": web_search
 }
 
+# Custom check for restricting checklog to a specific user ID
+def is_authorized_user():
+    async def predicate(interaction: discord.Interaction) -> bool:
+        authorized_user_id = BOT_OWNER_ID
+        if interaction.user.id != authorized_user_id:
+            await interaction.response.send_message("You are not authorized to use this command.", ephemeral=True)
+            return False
+        return True
+    return app_commands.check(predicate)
+
 # Helper function to read the last N lines of a file asynchronously
 async def tail(filename, n):
     loop = asyncio.get_running_loop()
@@ -511,16 +521,6 @@ async def aitts_error(interaction: discord.Interaction, error: app_commands.AppC
         )
     else:
         await interaction.response.send_message("An error occurred while processing the command.", ephemeral=True)
-
-# Custom check for restricting checklog to a specific user ID
-def is_authorized_user():
-    async def predicate(interaction: discord.Interaction) -> bool:
-        authorized_user_id = BOT_OWNER_ID
-        if interaction.user.id != authorized_user_id:
-            await interaction.response.send_message("You are not authorized to use this command.", ephemeral=True)
-            return False
-        return True
-    return app_commands.check(predicate)
 
 # Slash command to check the last 100 lines of the bot.log file
 @bot.tree.command(name="checklog", description="Post the last 50 lines of the bot.log file")
