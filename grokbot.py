@@ -16,6 +16,7 @@ import aiofiles
 import signal
 from ddgs import DDGS
 import datetime
+from collections import deque
 
 # Load general environment variables
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -148,6 +149,37 @@ async def web_search(query):
 tools_map = {
     "web_search": web_search
 }
+
+# Helper function to read the last N lines of a file asynchronously
+async def tail(filename, n):
+    loop = asyncio.get_running_loop()
+    def read_tail():
+        try:
+            with open(filename, 'r') as f:
+                return list(deque(f, n))
+        except FileNotFoundError:
+            return ["Log file not found."]
+        except Exception as e:
+            return [f"Error reading log file: {str(e)}"]
+    return await loop.run_in_executor(None, read_tail)
+
+# Helper function to split log lines into chunks for Discord messages
+def split_log_lines(lines, max_length):
+    chunks = []
+    current_chunk = []
+    current_length = 0
+    for line in lines:
+        line_length = len(line)
+        if current_length + line_length > max_length:
+            if current_chunk:
+                chunks.append(''.join(current_chunk))
+                current_chunk = []
+                current_length = 0
+        current_chunk.append(line)
+        current_length += line_length
+    if current_chunk:
+        chunks.append(''.join(current_chunk))
+    return chunks
 
 @bot.event
 async def on_ready():
@@ -315,7 +347,7 @@ async def airoast_error(interaction: discord.Interaction, error: app_commands.Ap
             f"Please wait {error.retry_after:.2f} seconds before using this command again.", ephemeral=True
         )
     else:
-        await interaction.response.send_message("Anversion error occurred while processing the command.", ephemeral=True)
+        await interaction.response.send_message("An error occurred while processing the command.", ephemeral=True)
 
 # Slash command to motivate a user using AI
 @bot.tree.command(name="aimotivate", description="Give cheesy and over-the-top motivational advice to a user")
@@ -377,6 +409,36 @@ async def aimotivate(interaction: discord.Interaction, member: discord.Member, c
 
 @aimotivate.error
 async def aimotivate_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.CommandOnCooldown):
+        await interaction.response.send_message(
+            f"Please wait {error.retry_after:.2f} seconds before using this command again.", ephemeral=True
+        )
+    else:
+        await interaction.response.send_message("An error occurred while processing the command.", ephemeral=True)
+
+# Slash command to check the last 100 lines of the bot.log file
+@bot.tree.command(name="checklog", description="Post the last 100 lines of the bot.log file")
+@checks.cooldown(1, 30)  # Limit to prevent abuse
+async def checklog(interaction: discord.Interaction):
+    await interaction.response.defer()  # Defer the response to handle potential delays
+    try:
+        log_lines = await tail('/app/logs/bot.log', 100)
+        if log_lines and isinstance(log_lines[0], str) and "Error" in log_lines[0]:
+            await interaction.followup.send(log_lines[0])
+            return
+        # Split the log lines into chunks that fit within Discord's message limit
+        chunks = split_log_lines(log_lines, 1960)  # 1960 to account for additional characters
+        for i, chunk in enumerate(chunks):
+            if i == 0:
+                await interaction.followup.send(f"Last 100 lines of bot.log:\n```\n{chunk}```")
+            else:
+                await interaction.followup.send(f"```\n{chunk}```")
+            await asyncio.sleep(0.5)  # Small delay to prevent rate limiting
+    except Exception as e:
+        await interaction.followup.send(f"Error retrieving log file: {str(e)}")
+
+@checklog.error
+async def checklog_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     if isinstance(error, app_commands.CommandOnCooldown):
         await interaction.response.send_message(
             f"Please wait {error.retry_after:.2f} seconds before using this command again.", ephemeral=True
