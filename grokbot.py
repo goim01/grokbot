@@ -473,7 +473,7 @@ async def aitts(interaction: discord.Interaction, text: str, voice: app_commands
 
         payload = {
             "model": "gpt-4o-mini-tts",
-            "input": f"Say this: {text}",
+            "input": text,
             "voice": voice.value
         }
         headers = {
