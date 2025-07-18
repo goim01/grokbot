@@ -57,7 +57,7 @@ class SuppressConnectionClosedFilter(logging.Filter):
         if record.levelno == logging.ERROR and 'ConnectionClosed' in record.getMessage():
             if 'WebSocket closed with 1000' in record.getMessage():
                 return False  # Suppress this log
-        return True  # Allow all other log
+        return True  # Allow all other logs
 
 # Only suppress ConnectionClosed in the console, not in the file
 console_handler.addFilter(SuppressConnectionClosedFilter())
@@ -481,6 +481,7 @@ async def worker(queue):
 
 # Periodic task to save user preferences
 async def save_user_prefs_periodically():
+    global user_pref_dirty, user_pref_last_write
     while True:
         await asyncio.sleep(USER_PREF_WRITE_INTERVAL)
         async with user_pref_lock:
