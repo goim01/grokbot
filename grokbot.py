@@ -417,12 +417,12 @@ async def aimotivate_error(interaction: discord.Interaction, error: app_commands
         await interaction.response.send_message("An error occurred while processing the command.", ephemeral=True)
 
 # Slash command to check the last 100 lines of the bot.log file
-@bot.tree.command(name="checklog", description="Post the last 100 lines of the bot.log file")
+@bot.tree.command(name="checklog", description="Post the last 50 lines of the bot.log file")
 @checks.cooldown(1, 30)  # Limit to prevent abuse
 async def checklog(interaction: discord.Interaction):
     await interaction.response.defer()  # Defer the response to handle potential delays
     try:
-        log_lines = await tail('/app/logs/bot.log', 100)
+        log_lines = await tail('/app/logs/bot.log', 50)
         if log_lines and isinstance(log_lines[0], str) and "Error" in log_lines[0]:
             await interaction.followup.send(log_lines[0])
             return
@@ -430,7 +430,7 @@ async def checklog(interaction: discord.Interaction):
         chunks = split_log_lines(log_lines, 1960)  # 1960 to account for additional characters
         for i, chunk in enumerate(chunks):
             if i == 0:
-                await interaction.followup.send(f"Last 100 lines of bot.log:\n```\n{chunk}```")
+                await interaction.followup.send(f"Last 50 lines of bot.log:\n```\n{chunk}```")
             else:
                 await interaction.followup.send(f"```\n{chunk}```")
             await asyncio.sleep(0.5)  # Small delay to prevent rate limiting
