@@ -17,7 +17,7 @@ services:
     restart: "no"
 
   aibot:
-    image: ghcr.io/goim01/aibot:dev
+    image: ghcr.io/goim01/aibot:main
     depends_on:
       - init
     restart: unless-stopped

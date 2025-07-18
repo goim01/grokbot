@@ -17,6 +17,7 @@ import signal
 from ddgs import DDGS
 import datetime
 from collections import deque
+import io
 
 # Load general environment variables
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -34,6 +35,7 @@ XAI_CHAT_URL = "https://api.x.ai/v1/chat/completions"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
+OPENAI_VOICE_URL = "https://api.openai.com/v1/audio/speech"
 USER_PREF_FILE = "/app/user_prefs/user_preferences.json"
 
 # Set up logging to both file and console
@@ -433,6 +435,76 @@ async def aimotivate(interaction: discord.Interaction, member: discord.Member, c
 
 @aimotivate.error
 async def aimotivate_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.CommandOnCooldown):
+        await interaction.response.send_message(
+            f"Please wait {error.retry_after:.2f} seconds before using this command again.", ephemeral=True
+        )
+    else:
+        await interaction.response.send_message("An error occurred while processing the command.", ephemeral=True)
+
+# Slash command for text-to-speech using OpenAI TTS
+@bot.tree.command(name="aitts", description="Send a voice message using AI text-to-speech")
+@app_commands.describe(
+    text="The text for the AI to say",
+    voice="The voice to use for the speech",
+    context="Optional additional context"
+)
+@app_commands.choices(voice=[
+    app_commands.Choice(name="Alloy", value="alloy"),
+    app_commands.Choice(name="Ash", value="ash"),
+    app_commands.Choice(name="Ballad", value="ballad"),
+    app_commands.Choice(name="Coral", value="coral"),
+    app_commands.Choice(name="Echo", value="echo"),
+    app_commands.Choice(name="Fable", value="fable"),
+    app_commands.Choice(name="Nova", value="nova"),
+    app_commands.Choice(name="Onyx", value="onyx"),
+    app_commands.Choice(name="Sage", value="sage"),
+    app_commands.Choice(name="Shimmer", value="shimmer")
+])
+@checks.cooldown(1, 10)  # Once per 10 seconds per user
+async def aitts(interaction: discord.Interaction, text: str, voice: app_commands.Choice[str], context: str = None):
+    """Slash command to send a voice message using OpenAI TTS with a selected voice."""
+    await interaction.response.defer()
+    try:
+        text = text.strip()
+        if len(text) > 4096:
+            await interaction.followup.send("The text is too long. Please limit it to 4096 characters.")
+            return
+
+        payload = {
+            "model": "gpt-4o-mini-tts",
+            "input": f"Say this: {text}",
+            "voice": voice.value
+        }
+        headers = {
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json",
+            "User-Agent": "GrokBot/1.0"
+        }
+        async with aiohttp_session.post(OPENAI_VOICE_URL, headers=headers, json=payload) as response:
+            response.raise_for_status()
+            audio_data = await response.read()
+
+        # Check file size (Discord's limit is 8MB for non-boosted servers)
+        file_size = len(audio_data)
+        if file_size > 8 * 1024 * 1024:  # 8MB in bytes
+            await interaction.followup.send("The generated voice message is too large to send (over 8MB). Try shorter text.")
+            return
+
+        audio_file = io.BytesIO(audio_data)
+        audio_file.name = f"voice_message_{voice.value}.mp3"
+        # Truncate text preview to avoid exceeding Discord's message length limit
+        text_preview = text[:1800] + "..." if len(text) > 1800 else text
+        await interaction.followup.send(
+            f"Here is your voice message (voice: {voice.name}):\nYour prompt: {text_preview}",
+            file=discord.File(audio_file, filename=f"voice_message_{voice.value}.mp3")
+        )
+    except Exception as e:
+        logging.error(f"Error in aitts command: {e}")
+        await interaction.followup.send("Sorry, I couldn't generate the voice message at this time.")
+
+@aitts.error
+async def aitts_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     if isinstance(error, app_commands.CommandOnCooldown):
         await interaction.response.send_message(
             f"Please wait {error.retry_after:.2f} seconds before using this command again.", ephemeral=True
