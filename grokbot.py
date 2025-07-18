@@ -165,7 +165,7 @@ async def tail(filename, n):
             return ["Log file not found."]
         except Exception as e:
             return [f"Error reading log file: {str(e)}"]
-    return awaited loop.run_in_executor(None, read_tail)
+    return await loop.run_in_executor(None, read_tail)
 
 # Helper function to split log lines into chunks for Discord messages
 def split_log_lines(lines, max_length):
@@ -443,11 +443,27 @@ async def aimotivate_error(interaction: discord.Interaction, error: app_commands
         await interaction.response.send_message("An error occurred while processing the command.", ephemeral=True)
 
 # Slash command for text-to-speech using OpenAI TTS
-@bot.tree.command(name="aitts", description="Make the AI say something using text-to-speech")
-@app_commands.describe(text="The text for the AI to say", context="Optional additional context")
+@bot.tree.command(name="aitts", description="Send a voice message using AI text-to-speech")
+@app_commands.describe(
+    text="The text for the AI to say",
+    voice="The voice to use for the speech",
+    context="Optional additional context"
+)
+@app_commands.choices(voice=[
+    app_commands.Choice(name="Alloy", value="alloy"),
+    app_commands.Choice(name="Ash", value="ash"),
+    app_commands.Choice(name="Ballad", value="ballad"),
+    app_commands.Choice(name="Coral", value="coral"),
+    app_commands.Choice(name="Echo", value="echo"),
+    app_commands.Choice(name="Fable", value="fable"),
+    app_commands.Choice(name="Nova", value="nova"),
+    app_commands.Choice(name="Onyx", value="onyx"),
+    app_commands.Choice(name="Sage", value="sage"),
+    app_commands.Choice(name="Shimmer", value="shimmer")
+])
 @checks.cooldown(1, 10)  # Once per 10 seconds per user
-async def aitts(interaction: discord.Interaction, text: str, context: str = None):
-    """Slash command to convert user-provided text to speech using OpenAI TTS."""
+async def aitts(interaction: discord.Interaction, text: str, voice: app_commands.Choice[str], context: str = None):
+    """Slash command to send a voice message using OpenAI TTS with a selected voice."""
     await interaction.response.defer()
     try:
         text = text.strip()
@@ -458,7 +474,7 @@ async def aitts(interaction: discord.Interaction, text: str, context: str = None
         payload = {
             "model": "gpt-4o-mini-tts",
             "input": text,
-            "voice": "alloy"
+            "voice": voice.value
         }
         headers = {
             "Authorization": f"Bearer {OPENAI_API_KEY}",
@@ -469,12 +485,23 @@ async def aitts(interaction: discord.Interaction, text: str, context: str = None
             response.raise_for_status()
             audio_data = await response.read()
 
+        # Check file size (Discord's limit is 8MB for non-boosted servers)
+        file_size = len(audio_data)
+        if file_size > 8 * 1024 * 1024:  # 8MB in bytes
+            await interaction.followup.send("The generated voice message is too large to send (over 8MB). Try shorter text.")
+            return
+
         audio_file = io.BytesIO(audio_data)
-        audio_file.name = "speech.mp3"
-        await interaction.followup.send("Here is the speech you requested:", file=discord.File(audio_file, filename="speech.mp3"))
+        audio_file.name = f"voice_message_{voice.value}.mp3"
+        # Truncate text preview to avoid exceeding Discord's message length limit
+        text_preview = text[:1800] + "..." if len(text) > 1800 else text
+        await interaction.followup.send(
+            f"Here is your voice message (voice: {voice.name}):\nYou said: {text_preview}",
+            file=discord.File(audio_file, filename=f"voice_message_{voice.value}.mp3")
+        )
     except Exception as e:
         logging.error(f"Error in aitts command: {e}")
-        await interaction.followup.send("Sorry, I couldn't generate the speech at this time.")
+        await interaction.followup.send("Sorry, I couldn't generate the voice message at this time.")
 
 @aitts.error
 async def aitts_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
