@@ -452,10 +452,11 @@ async def checklog(interaction: discord.Interaction):
 @checklog.error
 async def checklog_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     if isinstance(error, app_commands.CommandOnCooldown):
-        await interaction.response.send_message(
-            f"Please wait {error.retry_after:.2f} seconds before using this command again.", ephemeral=True
-        )
-    else:
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                f"Please wait {error.retry_after:.2f} seconds before using this command again.", ephemeral=True
+            )
+    elif not interaction.response.is_done():
         await interaction.response.send_message("An error occurred while processing the command.", ephemeral=True)
 
 # Helper to split long messages for Discord
