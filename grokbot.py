@@ -17,6 +17,7 @@ import signal
 from ddgs import DDGS
 import datetime
 from collections import deque
+import io
 
 # Load general environment variables
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -34,6 +35,7 @@ XAI_CHAT_URL = "https://api.x.ai/v1/chat/completions"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
+OPENAI_VOICE_URL = "https://api.openai.com/v1/audio/speech"
 USER_PREF_FILE = "/app/user_prefs/user_preferences.json"
 
 # Set up logging to both file and console
@@ -163,7 +165,7 @@ async def tail(filename, n):
             return ["Log file not found."]
         except Exception as e:
             return [f"Error reading log file: {str(e)}"]
-    return await loop.run_in_executor(None, read_tail)
+    return awaited loop.run_in_executor(None, read_tail)
 
 # Helper function to split log lines into chunks for Discord messages
 def split_log_lines(lines, max_length):
@@ -433,6 +435,49 @@ async def aimotivate(interaction: discord.Interaction, member: discord.Member, c
 
 @aimotivate.error
 async def aimotivate_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.CommandOnCooldown):
+        await interaction.response.send_message(
+            f"Please wait {error.retry_after:.2f} seconds before using this command again.", ephemeral=True
+        )
+    else:
+        await interaction.response.send_message("An error occurred while processing the command.", ephemeral=True)
+
+# Slash command for text-to-speech using OpenAI TTS
+@bot.tree.command(name="aitts", description="Make the AI say something using text-to-speech")
+@app_commands.describe(text="The text for the AI to say", context="Optional additional context")
+@checks.cooldown(1, 10)  # Once per 10 seconds per user
+async def aitts(interaction: discord.Interaction, text: str, context: str = None):
+    """Slash command to convert user-provided text to speech using OpenAI TTS."""
+    await interaction.response.defer()
+    try:
+        text = text.strip()
+        if len(text) > 4096:
+            await interaction.followup.send("The text is too long. Please limit it to 4096 characters.")
+            return
+
+        payload = {
+            "model": "gpt-4o-mini-tts",
+            "input": text,
+            "voice": "alloy"
+        }
+        headers = {
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json",
+            "User-Agent": "GrokBot/1.0"
+        }
+        async with aiohttp_session.post(OPENAI_VOICE_URL, headers=headers, json=payload) as response:
+            response.raise_for_status()
+            audio_data = await response.read()
+
+        audio_file = io.BytesIO(audio_data)
+        audio_file.name = "speech.mp3"
+        await interaction.followup.send("Here is the speech you requested:", file=discord.File(audio_file, filename="speech.mp3"))
+    except Exception as e:
+        logging.error(f"Error in aitts command: {e}")
+        await interaction.followup.send("Sorry, I couldn't generate the speech at this time.")
+
+@aitts.error
+async def aitts_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     if isinstance(error, app_commands.CommandOnCooldown):
         await interaction.response.send_message(
             f"Please wait {error.retry_after:.2f} seconds before using this command again.", ephemeral=True
