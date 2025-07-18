@@ -473,7 +473,7 @@ async def aitts(interaction: discord.Interaction, text: str, voice: app_commands
 
         payload = {
             "model": "gpt-4o-mini-tts",
-            "input": text,
+            "input": f"Say this: {text}",
             "voice": voice.value
         }
         headers = {
@@ -496,7 +496,7 @@ async def aitts(interaction: discord.Interaction, text: str, voice: app_commands
         # Truncate text preview to avoid exceeding Discord's message length limit
         text_preview = text[:1800] + "..." if len(text) > 1800 else text
         await interaction.followup.send(
-            f"Here is your voice message (voice: {voice.name}):\nYou said: {text_preview}",
+            f"Here is your voice message (voice: {voice.name}):\nYour prompt: {text_preview}",
             file=discord.File(audio_file, filename=f"voice_message_{voice.value}.mp3")
         )
     except Exception as e:
