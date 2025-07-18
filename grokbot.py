@@ -23,6 +23,7 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 MAX_TOKENS = int(os.getenv("MAX_TOKENS", 5000))
 WORKER_COUNT = int(os.getenv("WORKER_COUNT", 5))  # Dynamic worker count
 BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID", 248083498433380352))  # Default to owner ID if not set
+API_TIMEOUT = int(os.getenv("API_TIMEOUT", 60))  # Configurable API timeout
 
 # xAI env variables
 XAI_API_KEY = os.getenv("XAI_API_KEY")
@@ -106,7 +107,7 @@ user_pref_last_write = 0
 USER_PREF_WRITE_INTERVAL = 10  # seconds
 
 # Create a single aiohttp session for reuse
-aio_EDITED_session = None
+aiohttp_session = None
 
 # Define tool definitions for function calling
 tool_definitions = [
@@ -219,7 +220,9 @@ async def on_ready():
 
     # Create a single aiohttp session for reuse
     global aiohttp_session
-    aiohttp_session = aiohttp.ClientSession()
+    if aiohttp_session is None:
+        aiohttp_session = aiohttp.ClientSession()
+        logging.info("Created new aiohttp ClientSession")
 
     # Start multiple worker tasks
     for _ in range(WORKER_COUNT):
@@ -231,9 +234,7 @@ async def on_ready():
     # Register graceful shutdown for aiohttp session and user prefs
     async def shutdown():
         global aiohttp_session, user_pref_dirty, user_pref_last_write
-        if aiohttp_session is not None:
-            await aiohttp_session.close()
-            aiohttp_session = None
+        # Save user preferences if dirty
         async with user_pref_lock:
             if user_pref_dirty:
                 try:
@@ -245,19 +246,41 @@ async def on_ready():
                     logging.info("User preferences saved on shutdown.")
                 except Exception as e:
                     logging.error(f"Failed to save user preferences on shutdown: {str(e)}")
-
-    async def on_shutdown():
-        await shutdown()
+        
+        # Close aiohttp session
+        if aiohttp_session is not None and not aiohttp_session.closed:
+            try:
+                await aiohttp_session.close()
+                logging.info("Closed aiohttp ClientSession")
+            except Exception as e:
+                logging.error(f"Failed to close aiohttp session: {str(e)}")
+            finally:
+                aiohttp_session = None
 
     # Register shutdown handler for SIGTERM/SIGINT
     def _register_shutdown():
         loop = asyncio.get_event_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             try:
-                loop.add_signal_handler(sig, lambda: asyncio.create_task(on_shutdown()))
+                loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
             except NotImplementedError:
                 pass  # Not supported on Windows
+
     _register_shutdown()
+
+    # Register shutdown on bot close
+    bot.loop.create_task(bot_close_handler(shutdown))
+
+# Helper function to handle bot close event
+async def bot_close_handler(shutdown_func):
+    logging.info("Bot close handler triggered")
+    try:
+        await bot.wait_until_ready()
+        await bot.wait_for("close", timeout=None)
+    except asyncio.CancelledError:
+        logging.info("Bot close handler cancelled")
+    finally:
+        await shutdown_func()
 
 # Slash command to select API (xAI or OpenAI)
 @bot.tree.command(name="selectapi", description="Select the AI API (xAI or OpenAI)")
@@ -488,7 +511,11 @@ async def worker(queue):
         try:
             await handle_message(message)
         except Exception as e:
-            logging.error(f"Error in worker: {e}\n{traceback.format_exc()}")
+            logging.error(f"Error in worker for message {message.id}: {e}\n{traceback.format_exc()}")
+            try:
+                await message.reply("An error occurred while processing your request. Please try again.")
+            except discord.DiscordException as reply_error:
+                logging.error(f"Failed to send error reply for message {message.id}: {reply_error}")
         finally:
             queue.task_done()
 
@@ -514,11 +541,16 @@ class APIRetriesExceededError(Exception):
     """Raised when API request fails after maximum retries."""
 
 async def send_api_request(session, api_url, headers, payload):
+    global aiohttp_session
     retries = 3
     for attempt in range(retries):
         response = None
         try:
-            async with session.post(api_url, headers=headers, json=payload, timeout=30) as response:
+            if session.closed:
+                logging.warning("Session closed, creating new aiohttp session")
+                aiohttp_session = aiohttp.ClientSession()
+                session = aiohttp_session
+            async with session.post(api_url, headers=headers, json=payload, timeout=API_TIMEOUT) as response:
                 response.raise_for_status()
                 return await response.json()
         except aiohttp.ClientResponseError as e:
@@ -547,6 +579,7 @@ async def send_api_request(session, api_url, headers, payload):
 # Handle each tagged message with or without image
 async def handle_message(message):
     global user_pref_dirty, aiohttp_session, _re_bot_mention, _re_bot_name, _re_bot_nick, _re_user_mention
+    logging.info(f"Handling message {message.id} from user {message.author.id}")
     raw_content = message.content
     question = raw_content
 
@@ -595,7 +628,7 @@ async def handle_message(message):
                 break
         reply_chain.reverse()
     except (discord.NotFound, discord.Forbidden) as e:
-        logging.warning(f"Could not fetch reply chain: {str(e)}")
+        logging.warning(f"Could not fetch reply chain for message {message.id}: {str(e)}")
 
     # Collect all image attachments from the message and its reply chain
     image_urls = []
@@ -623,11 +656,11 @@ async def handle_message(message):
     mentions = [f"<@!{user.id}>" for user in message.mentions if user != bot.user]
     mention_text = " ".join(mentions) + " " if mentions else ""
 
-    logging.info(f"Context sent to API: {context}")
+    logging.info(f"Context sent to API for message {message.id}: {context}")
 
     # Determine which API to use (default to openai)
     selected_api = user_api_selection.get(message.author.id, "openai")
-    logging.info(f"Selected API: {selected_api}")
+    logging.info(f"Selected API for message {message.id}: {selected_api}")
 
     # Get current date and time
     current_time = datetime.datetime.now()
@@ -745,7 +778,7 @@ async def handle_message(message):
                     await message.reply(final_message)
                     await asyncio.sleep(0.5)
         except Exception as e:
-            logging.error(f"Unexpected error ({selected_api}): {str(e)}\n{traceback.format_exc()}")
+            logging.error(f"Unexpected error ({selected_api}) for message {message.id}: {str(e)}\n{traceback.format_exc()}")
             await message.reply(f"Unexpected error from {selected_api.upper()}: {str(e)}")
 
 # Hook into Discord message events
