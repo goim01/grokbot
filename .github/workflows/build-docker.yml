@@ -6,6 +6,7 @@ on:
       - main
       - dev
       - tts-dev
+      - reactions
 
 jobs:
   build-and-push:
