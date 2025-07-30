@@ -9,10 +9,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the bot code
-COPY grokbot.py .
+COPY bot.py .
 
 # Set environment variable for unbuffered Python output
 ENV PYTHONUNBUFFERED=1
 
 # Run the bot
-CMD ["python", "grokbot.py"]
+CMD ["python", "bot.py"]
