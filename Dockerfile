@@ -8,8 +8,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the bot code
-COPY bot.py .
+# Copy the bot files, preserving the directory structure
+COPY *.py .
+COPY cogs/ cogs/
 
 # Set environment variable for unbuffered Python output
 ENV PYTHONUNBUFFERED=1
