@@ -874,7 +874,7 @@ async def on_message(message):
     # React to messages from the specified user
     if react_user_id is not None and message.author.id == react_user_id:
         try:
-            await message.add_reaction(":rainbow_flag:")
+            await message.add_reaction("🏳️‍🌈")
         except discord.Forbidden:
             logging.warning(f"Cannot react to message in {message.channel}")
         except discord.HTTPException:
