@@ -559,7 +559,7 @@ async def checklog_error(interaction: discord.Interaction, error: app_commands.A
 async def set_react_user(interaction: discord.Interaction, user: discord.User):
     # Restrict to bot owner
     if interaction.user.id != BOT_OWNER_ID:
-        await interaction.response.send_message("Only the bot owner can use this command.")
+        await interaction.response.send_message("Only the bot owner can use this command.", ephemeral=True)
         return
     
     # Set the global react_user_id to the selected user's ID
@@ -573,12 +573,12 @@ async def set_react_user(interaction: discord.Interaction, user: discord.User):
 @bot.tree.command(name="disablereact", description="Disable the message reaction feature")
 async def disable_react(interaction: discord.Interaction):
     if interaction.user.id != BOT_OWNER_ID:
-        await interaction.response.send_message("Only the bot owner can use this command.")
+        await interaction.response.send_message("Only the bot owner can use this command.", ephemeral=True)
         return
     global react_user_id, user_pref_dirty
     react_user_id = None
     user_pref_dirty = True
-    await interaction.response.send_message("Disabled the message reaction feature")
+    await interaction.response.send_message("Disabled the message reaction feature", ephemeral=True)
 
 # Helper to split long messages for Discord
 def split_message(text, max_length):
