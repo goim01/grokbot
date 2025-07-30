@@ -108,8 +108,9 @@ user_pref_dirty = False
 user_pref_last_write = 0
 USER_PREF_WRITE_INTERVAL = 10  # seconds
 
-# Create a single aiohttp session for reuse
+# Declare aiohttp_session and react_user_id globally
 aiohttp_session = None
+react_user_id = None
 
 # Define tool definitions for function calling
 tool_definitions = [
