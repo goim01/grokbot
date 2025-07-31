@@ -8,6 +8,7 @@ on:
       - tts-dev
       - reactions
       - refactor
+      - performance
 
 jobs:
   build-and-push:
