@@ -158,3 +158,6 @@ class AICommands(commands.Cog):
         except Exception as e:
             logging.error(f"Error in aitts command: {e}")
             await interaction.followup.send("Sorry, I couldn't generate the voice message at this time.")
+
+def setup(bot):
+    bot.add_cog(AICommands(bot))

@@ -54,3 +54,6 @@ class AdminCommands(commands.Cog):
         self.bot.react_user_id = None
         self.bot.user_pref_dirty = True
         await interaction.response.send_message("Disabled the message reaction feature", ephemeral=True)
+
+def setup(bot):
+    bot.add_cog(AdminCommands(bot))

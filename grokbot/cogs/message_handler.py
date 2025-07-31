@@ -235,3 +235,6 @@ class MessageHandler(commands.Cog):
             except Exception as e:
                 logging.error(f"Unexpected error ({selected_api}) for message {message.id}: {str(e)}\n{traceback.format_exc()}")
                 await message.reply(f"Unexpected error from {selected_api.upper()}: {str(e)}")
+
+def setup(bot):
+    bot.add_cog(MessageHandler(bot))
