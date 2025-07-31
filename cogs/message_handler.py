@@ -177,7 +177,6 @@ class MessageHandler(commands.Cog):
                     }
                     response_data = await send_api_request(session, api_url, headers, payload, self.bot.API_TIMEOUT)
                     if "choices" in response_data and response_data["choices"]:
-                        answer = response_data["choices"][0]["message прес
                         answer = response_data["choices"][0]["message"]["content"]
                     else:
                         answer = "Invalid response from API"
