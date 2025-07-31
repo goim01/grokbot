@@ -8,12 +8,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the bot files, preserving the directory structure
-COPY *.py .
-COPY cogs/ cogs/
+# Copy the grokbot package
+COPY grokbot/ grokbot/
 
 # Set environment variable for unbuffered Python output
 ENV PYTHONUNBUFFERED=1
 
 # Run the bot
-CMD ["python", "bot.py"]
+CMD ["python", "grokbot/bot.py"]

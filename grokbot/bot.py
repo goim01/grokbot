@@ -6,9 +6,9 @@ import signal
 import json
 import aiofiles
 import sys
-from config import *
-from utils import *
-from api import *
+from grokbot.config import *
+from grokbot.utils import *
+from grokbot.api import *
 
 class GrokBot(commands.AutoShardedBot):
     def __init__(self):
@@ -70,9 +70,9 @@ class GrokBot(commands.AutoShardedBot):
                 except NotImplementedError:
                     pass
         _register_shutdown()
-        await self.load_extension("cogs.message_handler")
-        await self.load_extension("cogs.ai_commands")
-        await self.load_extension("cogs.admin_commands")
+        await self.load_extension("grokbot.cogs.message_handler")
+        await self.load_extension("grokbot.cogs.ai_commands")
+        await self.load_extension("grokbot.cogs.admin_commands")
 
     async def on_disconnect(self):
         logging.warning("Bot disconnected from Discord (WebSocket closed). Waiting for automatic reconnect...")
