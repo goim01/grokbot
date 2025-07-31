@@ -20,7 +20,7 @@ OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 OPENAI_VOICE_URL = "https://api.openai.com/v1/audio/speech"
 
 USER_PREF_FILE = Path("/app/user_prefs/user_preferences.json")
-USER_PREF_WRITE_INTERVAL = 10  # seconds
+USER_PREF_WRITE_INTERVAL = 30  # Increased to 30 seconds
 
 # Logging setup
 root_logger = logging.getLogger()

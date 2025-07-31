@@ -6,6 +6,7 @@ import signal
 import json
 import aiofiles
 import sys
+import time
 from grokbot.config import *
 from grokbot.utils import *
 from grokbot.api import *
@@ -33,8 +34,9 @@ class GrokBot(commands.AutoShardedBot):
         self.XAI_CHAT_URL = XAI_CHAT_URL
         self.OPENAI_CHAT_URL = OPENAI_CHAT_URL
         self.OPENAI_VOICE_URL = OPENAI_VOICE_URL
-        # Replace with your guild ID for testing
-        self.test_guild_id = None  # e.g., 123456789012345678
+        self.test_guild_id = None  # Replace with your guild ID or None for global sync
+        self.last_sync_time = 0
+        self.sync_interval = 3600  # Sync every hour if needed
 
     async def on_ready(self):
         if self.user:
@@ -58,7 +60,7 @@ class GrokBot(commands.AutoShardedBot):
             logging.error(f"Error loading user preferences: {str(e)}")
 
         if self.session is None:
-            self.session = aiohttp.ClientSession()
+            self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(limit=50))
             logging.info("Created new aiohttp ClientSession")
 
         # Load cogs
@@ -70,18 +72,28 @@ class GrokBot(commands.AutoShardedBot):
         except Exception as e:
             logging.error(f"Failed to load cogs: {str(e)}")
 
-        # Sync commands
-        try:
-            if self.test_guild_id:
-                guild = discord.Object(id=self.test_guild_id)
-                self.tree.copy_global_to(guild=guild)
-                synced = await self.tree.sync(guild=guild)
-                logging.info(f"Synced {len(synced)} commands to guild {self.test_guild_id}")
-            else:
-                synced = await self.tree.sync()
-                logging.info(f"Synced {len(synced)} commands globally")
-        except Exception as e:
-            logging.error(f"Failed to sync commands: {str(e)}")
+        # Sync commands if needed
+        current_time = time.time()
+        if current_time - self.last_sync_time > self.sync_interval:
+            retries = 3
+            for attempt in range(retries):
+                try:
+                    if self.test_guild_id:
+                        guild = discord.Object(id=self.test_guild_id)
+                        self.tree.copy_global_to(guild=guild)
+                        synced = await self.tree.sync(guild=guild)
+                        logging.info(f"Synced {len(synced)} commands to guild {self.test_guild_id}")
+                    else:
+                        synced = await self.tree.sync()
+                        logging.info(f"Synced {len(synced)} commands globally")
+                    self.last_sync_time = current_time
+                    break
+                except Exception as e:
+                    if attempt < retries - 1:
+                        logging.warning(f"Sync attempt {attempt + 1} failed: {str(e)}. Retrying...")
+                        await asyncio.sleep(2 ** attempt)
+                    else:
+                        logging.error(f"Failed to sync commands after {retries} attempts: {str(e)}")
 
         self.loop.create_task(self.save_user_prefs_periodically())
         def _register_shutdown():
