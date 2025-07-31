@@ -7,7 +7,7 @@ import re
 import datetime
 import json
 from grokbot.api import send_api_request, tool_definitions, tools_map
-from goim01.grokbot.grokbot.utils import split_message
+from grokbot.utils import split_message
 from grokbot.config import WORKER_COUNT
 
 class MessageHandler(commands.Cog):
