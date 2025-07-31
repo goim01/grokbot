@@ -26,7 +26,7 @@ class MessageHandler(commands.Cog):
 
     def adjust_workers(self):
         """Dynamically adjust the number of worker tasks based on queue size."""
-        target_workers = min(max(1, self.bot.message_queue.qsize() // 5 + 1), WORKER_COUNT * 2)
+        target_workers = min(max(2, self.bot.message_queue.qsize() // 5 + 2), WORKER_COUNT * 2)
         current_workers = len(self.workers)
         if target_workers > current_workers:
             for _ in range(target_workers - current_workers):
