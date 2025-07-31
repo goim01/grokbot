@@ -6,9 +6,9 @@ import traceback
 import re
 import datetime
 import json
-from ..api import send_api_request, tool_definitions, tools_map
-from ..utils import split_message
-from ..config import WORKER_COUNT
+from grokbot.api import send_api_request, tool_definitions, tools_map
+from grokbot.utils import split_message
+from grokbot.config import WORKER_COUNT
 
 class MessageHandler(commands.Cog):
     def __init__(self, bot):
@@ -175,8 +175,9 @@ class MessageHandler(commands.Cog):
                         "messages": messages,
                         "max_tokens": self.bot.MAX_TOKENS
                     }
-                    response_data = await send_api_request(session, api_url, headers, payload)
+                    response_data = await send_api_request(session, api_url, headers, payload, self.bot.API_TIMEOUT)
                     if "choices" in response_data and response_data["choices"]:
+                        answer = response_data["choices"][0]["message прес
                         answer = response_data["choices"][0]["message"]["content"]
                     else:
                         answer = "Invalid response from API"
@@ -195,7 +196,7 @@ class MessageHandler(commands.Cog):
                             "stream": False,
                             "max_tokens": self.bot.MAX_TOKENS
                         }
-                        response_data = await send_api_request(session, api_url, headers, payload)
+                        response_data = await send_api_request(session, api_url, headers, payload, self.bot.API_TIMEOUT)
                         if "choices" not in response_data or not response_data["choices"]:
                             answer = "Invalid response from API"
                             break
