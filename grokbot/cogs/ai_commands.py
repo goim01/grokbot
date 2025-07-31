@@ -159,5 +159,5 @@ class AICommands(commands.Cog):
             logging.error(f"Error in aitts command: {e}")
             await interaction.followup.send("Sorry, I couldn't generate the voice message at this time.")
 
-def setup(bot):
-    bot.add_cog(AICommands(bot))
+async def setup(bot):
+    await bot.add_cog(AICommands(bot))
