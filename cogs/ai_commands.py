@@ -4,8 +4,8 @@ import discord
 import datetime
 import logging
 import io
-from ..api import send_api_request
-from ..config import BOT_OWNER_ID
+from grokbot.api import send_api_request
+from grokbot.config import BOT_OWNER_ID
 
 class AICommands(commands.Cog):
     def __init__(self, bot):
@@ -61,7 +61,7 @@ class AICommands(commands.Cog):
                 "Content-Type": "application/json",
                 "User-Agent": "GrokBot/1.0"
             }
-            response = await send_api_request(self.bot.session, self.bot.OPENAI_CHAT_URL, headers, payload)
+            response = await send_api_request(self.bot.session, self.bot.OPENAI_CHAT_URL, headers, payload, self.bot.API_TIMEOUT)
             answer = response["choices"][0]["message"]["content"]
             await interaction.followup.send(f"Roast for {member.mention}: {answer}")
         except Exception as e:
@@ -98,7 +98,7 @@ class AICommands(commands.Cog):
                 "Content-Type": "application/json",
                 "User-Agent": "GrokBot/1.0"
             }
-            response = await send_api_request(self.bot.session, self.bot.OPENAI_CHAT_URL, headers, payload)
+            response = await send_api_request(self.bot.session, self.bot.OPENAI_CHAT_URL, headers, payload, self.bot.API_TIMEOUT)
             answer = response["choices"][0]["message"]["content"]
             await interaction.followup.send(f"Motivational advice for {member.mention}: {answer}")
         except Exception as e:

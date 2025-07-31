@@ -2,8 +2,8 @@ from discord import app_commands
 from discord.ext import commands
 import discord
 import asyncio
-from ..utils import tail, split_log_lines
-from ..config import BOT_OWNER_ID
+from grokbot.utils import tail, split_log_lines
+from grokbot.config import BOT_OWNER_ID
 
 class AdminCommands(commands.Cog):
     def __init__(self, bot):
