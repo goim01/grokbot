@@ -12,8 +12,9 @@ from grokbot.api import *
 
 class GrokBot(commands.AutoShardedBot):
     def __init__(self):
-        super().__init__(command_prefix="!", intents=discord.Intents.default())
-        self.intents.message_content = True
+        intents = discord.Intents.default()
+        intents.message_content = True
+        super().__init__(command_prefix="!", intents=intents)
         self.session = None
         self.message_queue = asyncio.Queue()
         self.user_api_selection = {}
@@ -32,10 +33,12 @@ class GrokBot(commands.AutoShardedBot):
         self.XAI_CHAT_URL = XAI_CHAT_URL
         self.OPENAI_CHAT_URL = OPENAI_CHAT_URL
         self.OPENAI_VOICE_URL = OPENAI_VOICE_URL
+        # Replace with your guild ID for testing
+        self.test_guild_id = None  # e.g., 123456789012345678
 
     async def on_ready(self):
         if self.user:
-            logging.info(f"Logged in as {self.user.name}")
+            logging.info(f"Logged in as {self.user.name} ({self.user.id})")
         else:
             logging.info("Logged in, but bot user is None somehow?")
         try:
@@ -53,14 +56,33 @@ class GrokBot(commands.AutoShardedBot):
                         logging.info(f"Loaded user preferences for {len(self.user_api_selection)} users.")
         except Exception as e:
             logging.error(f"Error loading user preferences: {str(e)}")
-        try:
-            synced = await self.tree.sync()
-            logging.info(f"Synced {len(synced)} commands")
-        except Exception as e:
-            logging.error(f"Failed to sync commands: {e}")
+
         if self.session is None:
             self.session = aiohttp.ClientSession()
             logging.info("Created new aiohttp ClientSession")
+
+        # Load cogs
+        try:
+            await self.load_extension("grokbot.cogs.message_handler")
+            await self.load_extension("grokbot.cogs.ai_commands")
+            await self.load_extension("grokbot.cogs.admin_commands")
+            logging.info("All cogs loaded successfully")
+        except Exception as e:
+            logging.error(f"Failed to load cogs: {str(e)}")
+
+        # Sync commands
+        try:
+            if self.test_guild_id:
+                guild = discord.Object(id=self.test_guild_id)
+                self.tree.copy_global_to(guild=guild)
+                synced = await self.tree.sync(guild=guild)
+                logging.info(f"Synced {len(synced)} commands to guild {self.test_guild_id}")
+            else:
+                synced = await self.tree.sync()
+                logging.info(f"Synced {len(synced)} commands globally")
+        except Exception as e:
+            logging.error(f"Failed to sync commands: {str(e)}")
+
         self.loop.create_task(self.save_user_prefs_periodically())
         def _register_shutdown():
             loop = asyncio.get_event_loop()
@@ -70,9 +92,6 @@ class GrokBot(commands.AutoShardedBot):
                 except NotImplementedError:
                     pass
         _register_shutdown()
-        await self.load_extension("grokbot.cogs.message_handler")
-        await self.load_extension("grokbot.cogs.ai_commands")
-        await self.load_extension("grokbot.cogs.admin_commands")
 
     async def on_disconnect(self):
         logging.warning("Bot disconnected from Discord (WebSocket closed). Waiting for automatic reconnect...")
