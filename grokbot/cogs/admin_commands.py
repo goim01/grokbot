@@ -81,7 +81,7 @@ class AdminCommands(commands.Cog):
                 form.add_field('model', 'gpt-4o-transcribe')
                 form.add_field('response_format', 'verbose_json')
                 form.add_field('timestamp_granularities', 'segment')
-                async with session.post(self.bot.OPENAI_TRANSCRIPTION_URL, headers=headers, data=form, timeout=60) as response:
+                async with session.post(self.bot.OPENAI_TRANSCRIPTION_URL, headers=headers, data=form, timeout=300) as response:
                     try:
                         response.raise_for_status()
                         transcription_data = await response.json()
