@@ -55,7 +55,7 @@ class AdminCommands(commands.Cog):
 
     @app_commands.command(
         name="transcribe_audio",
-        description="Transcribe audio using OpenAI (gpt-4o, gpt-4o-mini, or whisper-1). Supports mp3, wav, m4a, ogg (25MB max)."
+        description="Transcribe audio using OpenAI (gpt-4o, gpt-4o-mini, or whisper-1). Supports mp3, wav, m4a, ogg."
     )
     @app_commands.describe(
         audio_file="The audio file to transcribe",
