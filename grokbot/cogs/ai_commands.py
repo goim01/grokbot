@@ -4,6 +4,7 @@ import discord
 import datetime
 import logging
 import io
+import asyncio
 from grokbot.api import send_api_request
 from grokbot.config import BOT_OWNER_ID
 
@@ -158,6 +159,53 @@ class AICommands(commands.Cog):
         except Exception as e:
             logging.error(f"Error in aitts command: {e}")
             await interaction.followup.send("Sorry, I couldn't generate the voice message at this time.")
+
+    @app_commands.command(name="transcribe_audio", description="Transcribe an audio file (OpenAI only). Supports mp3, wav, m4a, etc. Max 25MB.")
+    @app_commands.describe(audio_file="The audio file to transcribe")
+    async def transcribe_audio(self, interaction: discord.Interaction, audio_file: discord.Attachment):
+        if not audio_file.content_type.startswith("audio/"):
+            await interaction.response.send_message("Please upload an audio file.", ephemeral=True)
+            return
+        if audio_file.size > 25 * 1024 * 1024:
+            await interaction.response.send_message("The audio file is too large. Maximum size is 25MB.", ephemeral=True)
+            return
+        await interaction.response.defer()
+        try:
+            # Download the audio file
+            audio_data = await audio_file.read()
+            # Prepare the API request
+            headers = {
+                "Authorization": f"Bearer {self.bot.OPENAI_API_KEY}",
+            }
+            files = {
+                "file": (audio_file.filename, audio_data, audio_file.content_type),
+                "model": (None, "whisper-1"),
+                "response_format": (None, "verbose_json"),
+                "timestamp_granularities[]": (None, "segment"),
+            }
+            async with self.bot.session.post(self.bot.OPENAI_TRANSCRIPTION_URL, headers=headers, data=files) as response:
+                response.raise_for_status()
+                transcription_data = await response.json()
+            # Process the transcription
+            segments = transcription_data["segments"]
+            formatted_transcription = ""
+            for segment in segments:
+                start = segment["start"]
+                end = segment["end"]
+                text = segment["text"]
+                formatted_transcription += f"[{start:.2f} - {end:.2f}] {text}\n"
+            # Split the transcription if necessary
+            max_length = 2000
+            chunks = [formatted_transcription[i:i+max_length] for i in range(0, len(formatted_transcription), max_length)]
+            for i, chunk in enumerate(chunks):
+                if i == 0:
+                    await interaction.followup.send(f"Transcription:\n{chunk}\n\nNote: Speaker differentiation is not currently supported.")
+                else:
+                    await interaction.followup.send(chunk)
+                await asyncio.sleep(0.5)
+        except Exception as e:
+            logging.error(f"Error in transcribe_audio command: {e}")
+            await interaction.followup.send("Sorry, I couldn't transcribe the audio at this time.")
 
 async def setup(bot):
     await bot.add_cog(AICommands(bot))

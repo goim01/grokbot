@@ -18,6 +18,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 OPENAI_VOICE_URL = "https://api.openai.com/v1/audio/speech"
+OPENAI_TRANSCRIPTION_URL = "https://api.openai.com/v1/audio/transcriptions"
 
 USER_PREF_FILE = Path("/app/user_prefs/user_preferences.json")
 USER_PREF_WRITE_INTERVAL = 30  # Increased to 30 seconds

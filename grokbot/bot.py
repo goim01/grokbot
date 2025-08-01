@@ -34,6 +34,7 @@ class GrokBot(commands.AutoShardedBot):
         self.XAI_CHAT_URL = XAI_CHAT_URL
         self.OPENAI_CHAT_URL = OPENAI_CHAT_URL
         self.OPENAI_VOICE_URL = OPENAI_VOICE_URL
+        self.OPENAI_TRANSCRIPTION_URL = OPENAI_TRANSCRIPTION_URL
         self.test_guild_id = None  # Replace with your guild ID or None for global sync
         self.last_sync_time = 0
         self.sync_interval = 3600  # Sync every hour if needed
@@ -82,7 +83,7 @@ class GrokBot(commands.AutoShardedBot):
                         guild = discord.Object(id=self.test_guild_id)
                         self.tree.copy_global_to(guild=guild)
                         synced = await self.tree.sync(guild=guild)
-                        logging.info(f"Synced {len(synced)} commands to guild {self.test_guild_id}")
+                        logging.info(f"Synced {len(synced)} commands Sergto guild {self.test_guild_id}")
                     else:
                         synced = await self.tree.sync()
                         logging.info(f"Synced {len(synced)} commands globally")
