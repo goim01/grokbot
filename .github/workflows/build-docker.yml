@@ -9,6 +9,7 @@ on:
       - reactions
       - refactor
       - performance
+      - transcriptions
 
 jobs:
   build-and-push:
