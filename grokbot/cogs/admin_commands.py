@@ -64,43 +64,63 @@ class AdminCommands(commands.Cog):
             await interaction.response.send_message("Audio file is too large (max 25MB).", ephemeral=True)
             return
         await interaction.response.defer()
-        try:
-            audio_data = await audio_file.read()
-            headers = {
-                "Authorization": f"Bearer {self.bot.OPENAI_API_KEY}",
-            }
-            form = aiohttp.FormData()
-            form.add_field('file', audio_data, filename=audio_file.filename, content_type=audio_file.content_type)
-            form.add_field('model', 'gpt-4o-transcribe')
-            form.add_field('response_format', 'verbose_json')
-            form.add_field('timestamp_granularities', 'segment')  # Simplified field name
-            async with self.bot.session.post(self.bot.OPENAI_TRANSCRIPTION_URL, headers=headers, data=form, timeout=60) as response:
-                try:
-                    response.raise_for_status()
-                    transcription_data = await response.json()
-                except aiohttp.ClientResponseError as e:
-                    error_body = await response.text()
-                    logging.error(f"Transcription API error: HTTP {e.status}: {error_body[:500]}")
-                    raise
-            segments = transcription_data.get("segments", [])
-            if not segments:
-                await interaction.followup.send("No transcription available.")
+        retries = 3
+        for attempt in range(retries):
+            try:
+                session = self.bot.session
+                if session.closed:
+                    logging.warning("Session closed, creating new aiohttp session")
+                    self.bot.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(limit=50))
+                    session = self.bot.session
+                audio_data = await audio_file.read()
+                headers = {
+                    "Authorization": f"Bearer {self.bot.OPENAI_API_KEY}",
+                }
+                form = aiohttp.FormData()
+                form.add_field('file', audio_data, filename=audio_file.filename, content_type=audio_file.content_type)
+                form.add_field('model', 'gpt-4o-transcribe')
+                form.add_field('response_format', 'verbose_json')
+                form.add_field('timestamp_granularities', 'segment')
+                async with session.post(self.bot.OPENAI_TRANSCRIPTION_URL, headers=headers, data=form, timeout=60) as response:
+                    try:
+                        response.raise_for_status()
+                        transcription_data = await response.json()
+                    except aiohttp.ClientResponseError as e:
+                        error_body = await response.text()
+                        logging.error(f"Transcription API error (attempt {attempt + 1}): HTTP {e.status}: {error_body[:500]}")
+                        if e.status == 429 and attempt < retries - 1:  # Rate limit
+                            await asyncio.sleep(2 ** attempt)
+                            continue
+                        raise
+                segments = transcription_data.get("segments", [])
+                if not segments:
+                    await interaction.followup.send("No transcription available.")
+                    return
+                formatted_transcription = ""
+                for segment in segments:
+                    start = segment["start"]
+                    end = segment["end"]
+                    text = segment["text"]
+                    formatted_transcription += f"[{start:.2f} - {end:.2f}] {text}\n"
+                max_length = 2000
+                chunks = [formatted_transcription[i:i+max_length] for i in range(0, len(formatted_transcription), max_length)]
+                await interaction.followup.send("Transcription of the audio file:\nNote: Speaker differentiation is not currently supported.")
+                for chunk in chunks:
+                    await interaction.followup.send(chunk)
+                    await asyncio.sleep(0.5)
                 return
-            formatted_transcription = ""
-            for segment in segments:
-                start = segment["start"]
-                end = segment["end"]
-                text = segment["text"]
-                formatted_transcription += f"[{start:.2f} - {end:.2f}] {text}\n"
-            max_length = 2000
-            chunks = [formatted_transcription[i:i+max_length] for i in range(0, len(formatted_transcription), max_length)]
-            await interaction.followup.send("Transcription of the audio file:\nNote: Speaker differentiation is not currently supported.")
-            for chunk in chunks:
-                await interaction.followup.send(chunk)
-                await asyncio.sleep(0.5)
-        except Exception as e:
-            logging.error(f"Error in transcribe_audio command: {str(e)}")
-            await interaction.followup.send(f"Sorry, I couldn't transcribe the audio at this time: {str(e)}")
+            except (aiohttp.ClientConnectionError, aiohttp.ServerDisconnectedError) as e:
+                logging.warning(f"Connection error in transcribe_audio (attempt {attempt + 1}): {str(e)}")
+                if attempt < retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                logging.error(f"Error in transcribe_audio command after {retries} attempts: {str(e)}")
+                await interaction.followup.send(f"Sorry, I couldn't transcribe the audio at this time: {str(e)}")
+                return
+            except Exception as e:
+                logging.error(f"Error in transcribe_audio command: {str(e)}")
+                await interaction.followup.send(f"Sorry, I couldn't transcribe the audio at this time: {str(e)}")
+                return
 
 async def setup(bot):
     await bot.add_cog(AdminCommands(bot))
