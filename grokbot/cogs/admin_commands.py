@@ -52,13 +52,16 @@ class AdminCommands(commands.Cog):
         self.bot.react_user_id = None
         self.bot.user_pref_dirty = True
         await interaction.response.send_message("Disabled the message reaction feature", ephemeral=True)
-    
+
     @app_commands.command(name="transcribe_audio", description="Transcribe an audio file using OpenAI. Supports mp3, wav, m4a, and ogg formats (up to 25MB).")
     @app_commands.describe(audio_file="The audio file to transcribe")
     @is_authorized_user()
     async def transcribe_audio(self, interaction: discord.Interaction, audio_file: discord.Attachment):
         if not audio_file.content_type.startswith("audio/"):
             await interaction.response.send_message("Please upload an audio file.", ephemeral=True)
+            return
+        if audio_file.size > 25 * 1024 * 1024:  # 25MB limit
+            await interaction.response.send_message("Audio file is too large (max 25MB).", ephemeral=True)
             return
         await interaction.response.defer()
         try:
@@ -68,12 +71,17 @@ class AdminCommands(commands.Cog):
             }
             form = aiohttp.FormData()
             form.add_field('file', audio_data, filename=audio_file.filename, content_type=audio_file.content_type)
-            form.add_field('model', 'gpt-4o-transcribe')
+            form.add_field('model', 'whisper-1')  # Use correct model
             form.add_field('response_format', 'verbose_json')
-            form.add_field('timestamp_granularities[]', 'segment')
+            form.add_field('timestamp_granularities', 'segment')  # Simplified field name
             async with self.bot.session.post(self.bot.OPENAI_TRANSCRIPTION_URL, headers=headers, data=form, timeout=60) as response:
-                response.raise_for_status()
-                transcription_data = await response.json()
+                try:
+                    response.raise_for_status()
+                    transcription_data = await response.json()
+                except aiohttp.ClientResponseError as e:
+                    error_body = await response.text()
+                    logging.error(f"Transcription API error: HTTP {e.status}: {error_body[:500]}")
+                    raise
             segments = transcription_data.get("segments", [])
             if not segments:
                 await interaction.followup.send("No transcription available.")
@@ -84,7 +92,6 @@ class AdminCommands(commands.Cog):
                 end = segment["end"]
                 text = segment["text"]
                 formatted_transcription += f"[{start:.2f} - {end:.2f}] {text}\n"
-            # Split the transcription if necessary
             max_length = 2000
             chunks = [formatted_transcription[i:i+max_length] for i in range(0, len(formatted_transcription), max_length)]
             await interaction.followup.send("Transcription of the audio file:\nNote: Speaker differentiation is not currently supported.")
@@ -92,8 +99,8 @@ class AdminCommands(commands.Cog):
                 await interaction.followup.send(chunk)
                 await asyncio.sleep(0.5)
         except Exception as e:
-            logging.error(f"Error in transcribe_audio command: {e}")
-            await interaction.followup.send("Sorry, I couldn't transcribe the audio at this time.")
+            logging.error(f"Error in transcribe_audio command: {str(e)}")
+            await interaction.followup.send(f"Sorry, I couldn't transcribe the audio at this time: {str(e)}")
 
 async def setup(bot):
     await bot.add_cog(AdminCommands(bot))
