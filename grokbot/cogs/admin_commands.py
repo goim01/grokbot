@@ -53,7 +53,10 @@ class AdminCommands(commands.Cog):
         self.bot.user_pref_dirty = True
         await interaction.response.send_message("Disabled the message reaction feature", ephemeral=True)
 
-    @app_commands.command(name="transcribe_audio", description="Transcribe an audio file using OpenAI. Choose a model: gpt-4o-transcribe, gpt-4o-mini-transcribe, or whisper-1. Supports mp3, wav, m4a, and ogg formats (up to 25MB).")
+    @app_commands.command(
+        name="transcribe_audio",
+        description="Transcribe audio using OpenAI (gpt-4o, gpt-4o-mini, or whisper-1). Supports mp3, wav, m4a, ogg (25MB max)."
+    )
     @app_commands.describe(
         audio_file="The audio file to transcribe",
         model="The transcription model to use"
