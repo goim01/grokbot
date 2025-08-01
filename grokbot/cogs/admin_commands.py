@@ -4,6 +4,7 @@ import discord
 import logging
 import aiohttp
 import asyncio
+import io
 from grokbot.utils import tail, split_log_lines
 from grokbot.config import BOT_OWNER_ID
 
@@ -111,7 +112,7 @@ class AdminCommands(commands.Cog):
                     if not segments:
                         await interaction.followup.send("No transcription available.")
                         return
-                    formatted_transcription = ""
+                    formatted_transcription = "Transcription using whisper-1 with timestamps:\n\n"
                     for segment in segments:
                         start = segment["start"]
                         end = segment["end"]
@@ -122,18 +123,19 @@ class AdminCommands(commands.Cog):
                     if not text:
                         await interaction.followup.send("No transcription available.")
                         return
-                    formatted_transcription = text
-                model_note = f"Transcription using {model}"
-                if model == "whisper-1":
-                    model_note += " with timestamps"
-                else:
-                    model_note += " (no timestamps)"
-                await interaction.followup.send(f"{model_note}\nNote: Speaker differentiation is not currently supported.")
-                max_length = 2000
-                chunks = [formatted_transcription[i:i+max_length] for i in range(0, len(formatted_transcription), max_length)]
-                for chunk in chunks:
-                    await interaction.followup.send(chunk)
-                    await asyncio.sleep(0.5)
+                    formatted_transcription = f"Transcription using {model} (no timestamps):\n\n{text}"
+                # Create a text file in memory
+                file_buffer = io.StringIO(formatted_transcription)
+                file_name = f"transcription_{model}.txt"
+                # Send the transcription as a file attachment
+                await interaction.followup.send(
+                    content=f"Transcription of the audio file using {model}:\nNote: Speaker differentiation is not currently supported.",
+                    file=discord.File(
+                        fp=io.BytesIO(file_buffer.getvalue().encode('utf-8')),
+                        filename=file_name
+                    )
+                )
+                file_buffer.close()
                 return
             except (aiohttp.ClientConnectionError, aiohttp.ServerDisconnectedError) as e:
                 logging.warning(f"Connection error in transcribe_audio (attempt {attempt + 1}): {str(e)}")
