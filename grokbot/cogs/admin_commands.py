@@ -71,7 +71,7 @@ class AdminCommands(commands.Cog):
             }
             form = aiohttp.FormData()
             form.add_field('file', audio_data, filename=audio_file.filename, content_type=audio_file.content_type)
-            form.add_field('model', 'whisper-1')  # Use correct model
+            form.add_field('model', 'gpt-4o-transcribe')
             form.add_field('response_format', 'verbose_json')
             form.add_field('timestamp_granularities', 'segment')  # Simplified field name
             async with self.bot.session.post(self.bot.OPENAI_TRANSCRIPTION_URL, headers=headers, data=form, timeout=60) as response:
