@@ -1,6 +1,7 @@
 from discord import app_commands
 from discord.ext import commands
 import discord
+import logging
 import aiohttp
 import asyncio
 from grokbot.utils import tail, split_log_lines
@@ -58,9 +59,6 @@ class AdminCommands(commands.Cog):
     async def transcribe_audio(self, interaction: discord.Interaction, audio_file: discord.Attachment):
         if not audio_file.content_type.startswith("audio/"):
             await interaction.response.send_message("Please upload an audio file.", ephemeral=True)
-            return
-        if audio_file.size > 25 * 1024 * 1024:
-            await interaction.response.send_message("The audio file is too large. Maximum size is 25MB.", ephemeral=True)
             return
         await interaction.response.defer()
         try:
