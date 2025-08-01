@@ -53,10 +53,18 @@ class AdminCommands(commands.Cog):
         self.bot.user_pref_dirty = True
         await interaction.response.send_message("Disabled the message reaction feature", ephemeral=True)
 
-    @app_commands.command(name="transcribe_audio", description="Transcribe an audio file using OpenAI. Supports mp3, wav, m4a, and ogg formats (up to 25MB).")
-    @app_commands.describe(audio_file="The audio file to transcribe")
+    @app_commands.command(name="transcribe_audio", description="Transcribe an audio file using OpenAI. Choose a model: gpt-4o-transcribe, gpt-4o-mini-transcribe, or whisper-1. Supports mp3, wav, m4a, and ogg formats (up to 25MB).")
+    @app_commands.describe(
+        audio_file="The audio file to transcribe",
+        model="The transcription model to use"
+    )
+    @app_commands.choices(model=[
+        app_commands.Choice(name="GPT-4o Transcribe", value="gpt-4o-transcribe"),
+        app_commands.Choice(name="GPT-4o Mini Transcribe", value="gpt-4o-mini-transcribe"),
+        app_commands.Choice(name="Whisper-1", value="whisper-1")
+    ])
     @is_authorized_user()
-    async def transcribe_audio(self, interaction: discord.Interaction, audio_file: discord.Attachment):
+    async def transcribe_audio(self, interaction: discord.Interaction, audio_file: discord.Attachment, model: str):
         if not audio_file.content_type.startswith("audio/"):
             await interaction.response.send_message("Please upload an audio file.", ephemeral=True)
             return
@@ -78,9 +86,12 @@ class AdminCommands(commands.Cog):
                 }
                 form = aiohttp.FormData()
                 form.add_field('file', audio_data, filename=audio_file.filename, content_type=audio_file.content_type)
-                form.add_field('model', 'gpt-4o-transcribe')
-                form.add_field('response_format', 'verbose_json')
-                form.add_field('timestamp_granularities', 'segment')
+                form.add_field('model', model)
+                if model == "whisper-1":
+                    form.add_field('response_format', 'verbose_json')
+                    form.add_field('timestamp_granularities', 'segment')
+                else:
+                    form.add_field('response_format', 'json')
                 async with session.post(self.bot.OPENAI_TRANSCRIPTION_URL, headers=headers, data=form, timeout=300) as response:
                     try:
                         response.raise_for_status()
@@ -92,19 +103,31 @@ class AdminCommands(commands.Cog):
                             await asyncio.sleep(2 ** attempt)
                             continue
                         raise
-                segments = transcription_data.get("segments", [])
-                if not segments:
-                    await interaction.followup.send("No transcription available.")
-                    return
-                formatted_transcription = ""
-                for segment in segments:
-                    start = segment["start"]
-                    end = segment["end"]
-                    text = segment["text"]
-                    formatted_transcription += f"[{start:.2f} - {end:.2f}] {text}\n"
+                if model == "whisper-1":
+                    segments = transcription_data.get("segments", [])
+                    if not segments:
+                        await interaction.followup.send("No transcription available.")
+                        return
+                    formatted_transcription = ""
+                    for segment in segments:
+                        start = segment["start"]
+                        end = segment["end"]
+                        text = segment["text"]
+                        formatted_transcription += f"[{start:.2f} - {end:.2f}] {text}\n"
+                else:
+                    text = transcription_data.get("text", "")
+                    if not text:
+                        await interaction.followup.send("No transcription available.")
+                        return
+                    formatted_transcription = text
+                model_note = f"Transcription using {model}"
+                if model == "whisper-1":
+                    model_note += " with timestamps"
+                else:
+                    model_note += " (no timestamps)"
+                await interaction.followup.send(f"{model_note}\nNote: Speaker differentiation is not currently supported.")
                 max_length = 2000
                 chunks = [formatted_transcription[i:i+max_length] for i in range(0, len(formatted_transcription), max_length)]
-                await interaction.followup.send("Transcription of the audio file:\nNote: Speaker differentiation is not currently supported.")
                 for chunk in chunks:
                     await interaction.followup.send(chunk)
                     await asyncio.sleep(0.5)
