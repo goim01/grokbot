@@ -38,19 +38,15 @@ class AdminCommands(commands.Cog):
             await interaction.followup.send(f"Error retrieving log file: {str(e)}")
 
     @app_commands.command(name="setreactuser", description="Set the user whose messages will be reacted with 🌈")
+    @is_authorized_user()
     async def set_react_user(self, interaction: discord.Interaction, user: discord.User):
-        if interaction.user.id != BOT_OWNER_ID:
-            await interaction.response.send_message("Only the bot owner can use this command.", ephemeral=True)
-            return
         self.bot.react_user_id = user.id
         self.bot.user_pref_dirty = True
         await interaction.response.send_message(f"Set to react to messages from {user.mention}", ephemeral=True)
 
     @app_commands.command(name="disablereact", description="Disable the message reaction feature")
+    @is_authorized_user()
     async def disable_react(self, interaction: discord.Interaction):
-        if interaction.user.id != BOT_OWNER_ID:
-            await interaction.response.send_message("Only the bot owner can use this command.", ephemeral=True)
-            return
         self.bot.react_user_id = None
         self.bot.user_pref_dirty = True
         await interaction.response.send_message("Disabled the message reaction feature", ephemeral=True)
