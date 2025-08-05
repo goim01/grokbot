@@ -1,4 +1,6 @@
 .env
+.vscode
+.venv
 user_preferences.json
 user_prefs/user_preferences.json
 venv/
