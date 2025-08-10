@@ -82,6 +82,16 @@ class MessageHandler(commands.Cog):
     async def handle_messages(self, messages):
         for message in messages:
             logging.info(f"Handling message {message.id} from user {message.author.id}")
+
+            # Check if bot has permissions in the channel
+            if not message.channel.permissions_for(message.guild.me).send_messages:
+                logging.warning(f"Bot lacks 'Send Messages' permission in channel {message.channel.id}")
+                try:
+                    await message.author.send("I don't have permission to respond in that channel. Please check my permissions or contact the server admin.")
+                except discord.Forbidden:
+                    logging.warning(f"Cannot DM user {message.author.id}")
+                continue
+
             raw_content = message.content
             question = raw_content
 
