@@ -21,4 +21,4 @@ ENV PYTHONUNBUFFERED=1
 RUN ls -R /app
 
 # Run the bot
-CMD ["python", "grokbot/bot.py"]
+CMD ["python", "-m", "grokbot.bot"]

@@ -1,3 +1,9 @@
+import sys
+from pathlib import Path
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -7,7 +13,6 @@ import logging
 import signal
 import json
 import aiofiles
-import sys
 import time
 from grokbot.config import (
     DISCORD_TOKEN,
