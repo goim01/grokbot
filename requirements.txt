@@ -2,4 +2,4 @@ discord.py==2.3.2
 aiohttp==3.9.5
 aiofiles==23.1.0
 ddgs==9.5.0
-cachetools==5.3.0
+cachetools==5.3.0python-dotenv
