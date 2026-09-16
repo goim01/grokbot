@@ -1,20 +1,21 @@
 import asyncio
 from collections import deque
-import aiofiles
-import json
-import time
+
 
 async def tail(filename, n):
     loop = asyncio.get_running_loop()
+
     def read_tail():
         try:
-            with open(filename, 'r') as f:
+            with open(filename, "r") as f:
                 return list(deque(f, n))
         except FileNotFoundError:
             return ["Log file not found."]
         except Exception as e:
             return [f"Error reading log file: {str(e)}"]
+
     return await loop.run_in_executor(None, read_tail)
+
 
 def split_log_lines(lines, max_length):
     chunks = []
@@ -24,14 +25,15 @@ def split_log_lines(lines, max_length):
         line_length = len(line)
         if current_length + line_length > max_length:
             if current_chunk:
-                chunks.append(''.join(current_chunk))
+                chunks.append("".join(current_chunk))
                 current_chunk = []
                 current_length = 0
         current_chunk.append(line)
         current_length += line_length
     if current_chunk:
-        chunks.append(''.join(current_chunk))
+        chunks.append("".join(current_chunk))
     return chunks
+
 
 def split_message(text, max_length):
     chunks = []

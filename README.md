@@ -44,6 +44,7 @@ Ready to get Grokbot running? Here’s what you need:
 ### Environment Variables
 
 Set these up in your environment (e.g., in a `.env` file or your system settings):  
+
 - `DISCORD_TOKEN`: Your bot’s token from Discord.  
 - `XAI_API_KEY`: Your xAI API key (optional if only using OpenAI).  
 - `OPENAI_API_KEY`: Your OpenAI API key (optional if only using xAI).  
@@ -55,13 +56,15 @@ Set these up in your environment (e.g., in a `.env` file or your system settings
 ### Installation
 
 1. **Clone the Repository**  
-   ```
+
+  ```bash
    git clone https://github.com/yourusername/grokbot.git
    cd grokbot
    ```
 
 2. **Install Dependencies**  
-   ```
+
+  ```bash
    pip install -r requirements.txt
    ```
 
@@ -69,7 +72,8 @@ Set these up in your environment (e.g., in a `.env` file or your system settings
    Add the variables listed above to your setup.
 
 4. **Run the Bot**  
-   ```
+
+  ```bash
    python grokbot.py
    ```
 
@@ -80,40 +84,53 @@ Invite Grokbot to your server using the link from the Discord Developer Portal, 
 Here’s how to have fun with Grokbot once it’s in your server:
 
 - **Pick an AI Service**  
-  ```
+
+  ```text
   /selectapi api: xai
   ```
+
   or  
-  ```
+
+  ```text
   /selectapi api: openai
   ```
 
 - **Roast Someone**  
-  ```
+
+  ```text
   /airoast member: @username context: They love pineapple on pizza!
   ```
+
   Watch Grokbot deliver a savage roast!
 
 - **Get Motivated**  
-  ```
+
+  ```text
   /aimotivate member: @username context: They just lost a game.
   ```
+
   Expect some hilariously dramatic encouragement.
 
 - **Make a Voice Message**  
-  ```
+
+  ```text
   /aitts text: "You’re awesome!" voice: alloy context: Cheering you up!
   ```
+
   Grokbot will send an audio file to the channel.
 
 - **Check Logs (Owner Only)**  
-  ```
+
+  ```text
   /checklog
   ```
+
   See what Grokbot’s been up to behind the scenes.
 
 - **Set a React User (Owner Only)**  
-  ```
+
+  ```text
   /setreactuser user: @username
   ```
+
   Their messages will now get a rainbow flag reaction.
