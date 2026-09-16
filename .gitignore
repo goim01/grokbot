@@ -1,6 +1,13 @@
 .env
 .vscode
 .venv
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.log
 user_preferences.json
 user_prefs/user_preferences.json
 venv/

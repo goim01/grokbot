@@ -62,16 +62,16 @@ Set these up in your environment (e.g., in a `.env` file or your system settings
    cd grokbot
    ```
 
-2. **Install Dependencies**  
+1. **Install Dependencies**
 
   ```bash
    pip install -r requirements.txt
    ```
 
-3. **Set Environment Variables**  
+1. **Set Environment Variables**
    Add the variables listed above to your setup.
 
-4. **Run the Bot**  
+1. **Run the Bot**
 
   ```bash
    python grokbot.py
