@@ -6,7 +6,7 @@ import traceback
 import re
 import datetime
 import json
-from grokbot.api import send_api_request, tool_definitions, tools_map
+from grokbot.api import APIRequestError, send_api_request, tool_definitions, tools_map
 from grokbot.utils import split_message
 from grokbot.config import WORKER_COUNT
 from discord.ext.commands import CooldownMapping, BucketType
@@ -23,6 +23,17 @@ class MessageHandler(commands.Cog):
         self.max_batch_size = 5
         self.workers = []
         self.adjust_workers()
+
+    async def _safe_reply(self, message, content):
+        try:
+            return await message.reply(content)
+        except discord.Forbidden:
+            logging.warning(f"Cannot reply to message {message.id}: missing Discord permission")
+        except discord.NotFound:
+            logging.warning(f"Cannot reply to message {message.id}: channel or message no longer exists")
+        except discord.HTTPException as e:
+            logging.error(f"Discord error replying to message {message.id}: {e}")
+        return None
 
     def adjust_workers(self):
         """Dynamically adjust the number of worker tasks based on queue size."""
@@ -119,7 +130,7 @@ class MessageHandler(commands.Cog):
                     question = self._re_user_mention[user.id].sub(display_name, question).strip()
 
             if not question:
-                await message.reply(f"Please ask a question or use slash commands.")
+                await self._safe_reply(message, "Please ask a question or use slash commands.")
                 continue
 
             reply_chain = []
@@ -176,10 +187,10 @@ class MessageHandler(commands.Cog):
 
             if selected_api == "xai":
                 if not self.bot.XAI_API_KEY:
-                    await message.reply(f"Sorry, the xAI API is not configured.")
+                    await self._safe_reply(message, "Sorry, the xAI API is not configured.")
                     continue
                 if image_urls:
-                    await message.reply(f"Sorry, image input is only supported with OpenAI at the moment.")
+                    await self._safe_reply(message, "Sorry, image input is only supported with OpenAI at the moment.")
                     continue
                 api_url = self.bot.XAI_CHAT_URL
                 api_key = self.bot.XAI_API_KEY
@@ -191,7 +202,7 @@ class MessageHandler(commands.Cog):
                 }
             else:
                 if not self.bot.OPENAI_API_KEY:
-                    await message.reply(f"Sorry, the OpenAI API is not configured.")
+                    await self._safe_reply(message, "Sorry, the OpenAI API is not configured.")
                     continue
                 api_url = self.bot.OPENAI_CHAT_URL
                 api_key = self.bot.OPENAI_API_KEY
@@ -273,11 +284,39 @@ class MessageHandler(commands.Cog):
                     for i, chunk in enumerate(chunks):
                         final_message = f"{mention_text}{chunk}" if i == 0 else chunk
                         if final_message.strip():
-                            await message.reply(final_message)
+                            await self._safe_reply(message, final_message)
                             await asyncio.sleep(0.5)
                 except Exception as e:
                     logging.error(f"Unexpected error ({selected_api}) for message {message.id}: {str(e)}\n{traceback.format_exc()}")
-                    await message.reply(f"Unexpected error from {selected_api.upper()}: {str(e)}")
+                    if isinstance(e, APIRequestError):
+                        if e.status == 429 and e.retryable:
+                            error_message = (
+                                f"{selected_api.upper()} is temporarily rate limited. "
+                                "Please try again in a moment."
+                            )
+                        elif e.status == 429:
+                            error_message = (
+                                f"{selected_api.upper()} account quota or credits are exhausted. "
+                                "Please check the API account billing and usage limits."
+                            )
+                        elif e.status in (401, 403):
+                            error_message = (
+                                f"{selected_api.upper()} rejected its API key. "
+                                "Please check the configured key and account permissions."
+                            )
+                        elif e.retryable:
+                            error_message = (
+                                f"{selected_api.upper()} is temporarily unavailable. "
+                                "Please try again in a moment."
+                            )
+                        else:
+                            error_message = (
+                                f"{selected_api.upper()} returned an API error (HTTP {e.status}). "
+                                "Please try again later."
+                            )
+                    else:
+                        error_message = f"Unexpected error from {selected_api.upper()}: {str(e)}"
+                    await self._safe_reply(message, error_message)
 
 async def setup(bot):
     await bot.add_cog(MessageHandler(bot))
