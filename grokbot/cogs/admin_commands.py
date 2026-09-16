@@ -10,6 +10,7 @@ class AdminCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    @staticmethod
     def is_authorized_user():
         async def predicate(interaction: discord.Interaction) -> bool:
             return interaction.user.id == BOT_OWNER_ID
