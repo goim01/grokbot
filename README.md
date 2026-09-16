@@ -74,7 +74,7 @@ Set these up in your environment (e.g., in a `.env` file or your system settings
 1. **Run the Bot**
 
   ```bash
-   python grokbot.py
+  python -m grokbot.bot
    ```
 
 Invite Grokbot to your server using the link from the Discord Developer Portal, and you’re good to go!
