@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY grokbot/ grokbot/
 
 # Set PYTHONPATH to include /app
-ENV PYTHONPATH=/app:$PYTHONPATH
+ENV PYTHONPATH=/app
 
 # Set environment variable for unbuffered Python output
 ENV PYTHONUNBUFFERED=1
