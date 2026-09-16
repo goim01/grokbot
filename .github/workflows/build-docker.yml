@@ -19,6 +19,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Enable emulation for non-native ARM builds.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       # Set up Docker Buildx for building multi-platform images
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -37,6 +41,7 @@ jobs:
         with:
           context: .
           file: Dockerfile
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/aibot:${{ github.ref_name }}
           cache-from: type=gha
