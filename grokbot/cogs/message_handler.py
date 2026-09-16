@@ -35,6 +35,30 @@ class MessageHandler(commands.Cog):
             logging.error(f"Discord error replying to message {message.id}: {e}")
         return None
 
+    async def _is_direct_interaction(self, message):
+        bot_user = self.bot.user
+        if bot_user is None:
+            return False
+
+        if bot_user in message.mentions:
+            return True
+
+        reference = message.reference
+        if reference is None:
+            return False
+
+        referenced_message = reference.resolved
+        referenced_author = getattr(referenced_message, "author", None)
+        if referenced_author is not None:
+            return referenced_author.id == bot_user.id
+
+        try:
+            referenced_message = await message.channel.fetch_message(reference.message_id)
+        except (discord.Forbidden, discord.NotFound, discord.HTTPException) as e:
+            logging.debug(f"Could not resolve reply target for message {message.id}: {e}")
+            return False
+        return referenced_message.author.id == bot_user.id
+
     def adjust_workers(self):
         """Dynamically adjust the number of worker tasks based on queue size."""
         target_workers = min(max(2, self.bot.message_queue.qsize() // 5 + 2), WORKER_COUNT * 2)
@@ -74,7 +98,12 @@ class MessageHandler(commands.Cog):
     async def on_message(self, message):
         if message.author == self.bot.user:
             return
-        # Check rate limit
+
+        direct_interaction = await self._is_direct_interaction(message)
+        if not direct_interaction:
+            return
+
+        # Rate-limit only messages directed at the bot.
         bucket = self.rate_limit.get_bucket(message)
         retry_after = bucket.update_rate_limit()
         if retry_after:
@@ -87,8 +116,7 @@ class MessageHandler(commands.Cog):
                 logging.warning(f"Cannot react to message in {message.channel}")
             except discord.HTTPException:
                 logging.error(f"Error reacting to message {message.id}")
-        if self.bot.user in message.mentions:
-            await self.bot.message_queue.put(message)
+        await self.bot.message_queue.put(message)
 
     async def handle_messages(self, messages):
         for message in messages:
