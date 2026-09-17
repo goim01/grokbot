@@ -222,7 +222,7 @@ class GrokBot(commands.AutoShardedBot):
 
 
 def main():
-    if DISCORD_TOKEN is None:
+    if not DISCORD_TOKEN:
         logging.error("DISCORD_TOKEN environment variable is not set. Exiting.")
         sys.exit("DISCORD_TOKEN environment variable is not set.")
     bot = GrokBot()

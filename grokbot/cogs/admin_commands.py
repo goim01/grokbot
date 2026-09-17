@@ -6,15 +6,15 @@ from grokbot.utils import tail, split_log_lines
 from grokbot.config import BOT_OWNER_ID, LOG_DIR
 
 
+def is_authorized_user():
+    async def predicate(interaction: discord.Interaction) -> bool:
+        return interaction.user.id == BOT_OWNER_ID
+    return app_commands.check(predicate)
+
+
 class AdminCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
-    @staticmethod
-    def is_authorized_user():
-        async def predicate(interaction: discord.Interaction) -> bool:
-            return interaction.user.id == BOT_OWNER_ID
-        return app_commands.check(predicate)
 
     @app_commands.command(name="checklog", description="Post the last 50 lines of the bot.log file")
     @app_commands.checks.cooldown(1, 30)

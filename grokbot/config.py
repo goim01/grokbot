@@ -32,9 +32,9 @@ def _default_data_dir() -> Path:
         return Path("/app")
     return Path(__file__).resolve().parent.parent
 
-DATA_DIR = Path(os.getenv("DATA_DIR", str(_default_data_dir())))
-LOG_DIR = Path(os.getenv("LOG_DIR", str(DATA_DIR / "logs")))
-USER_PREF_DIR = Path(os.getenv("USER_PREF_DIR", str(DATA_DIR / "user_prefs")))
+DATA_DIR = Path(os.getenv("DATA_DIR") or _default_data_dir())
+LOG_DIR = Path(os.getenv("LOG_DIR") or DATA_DIR / "logs")
+USER_PREF_DIR = Path(os.getenv("USER_PREF_DIR") or DATA_DIR / "user_prefs")
 USER_PREF_FILE = USER_PREF_DIR / "user_preferences.json"
 USER_PREF_WRITE_INTERVAL = 30  # Increased to 30 seconds
 
